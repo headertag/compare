@@ -1,4 +1,5 @@
-# 🔍 Compare - An Ensemble Learning Approach to Object Detection
+# 🔍 Compare
+An Ensemble Approach to Reliable Low Latency Object Detection
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Lines of Code](https://tokei.rs/b1/github/headertag/compare)](https://github.com/headertag/compare)
