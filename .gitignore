@@ -17,3 +17,8 @@ build/
 # Image files generated
 *.jpg
 ALERT.jpg
+
+# Temporary/swap files
+*.swp
+/tmp/
+*.pt

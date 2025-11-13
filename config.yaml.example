@@ -15,7 +15,7 @@ camera:
   height: 1080
 
 processing:
-  device: "cuda" # "cuda" or "cpu"
+  device: "cpu" # "cuda" or "cpu"
   coco_classes_path: "coco_classes.pickle"
 
 models:
