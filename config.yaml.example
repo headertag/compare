@@ -1,0 +1,41 @@
+telegram:
+  token: "YOUR_TELEGRAM_BOT_TOKEN"
+  chat_ids:
+    - 123456789 # Example chat ID
+
+alerting:
+  cooldown_seconds: 120
+  cooldown_threshold_multiplier: 2
+  min_interval_seconds: 5
+  sensitivity_threshold: 2.3
+
+camera:
+  index: 0
+  width: 1920
+  height: 1080
+
+processing:
+  device: "cuda" # "cuda" or "cpu"
+  coco_classes_path: "coco_classes.pickle"
+
+models:
+  # Confidence thresholds for person detection
+  detr_resnet_50:
+    name: "facebook/detr-resnet-50"
+    confidence_threshold: 0.9
+  yolos_tiny:
+    name: "hustvl/yolos-tiny"
+    confidence_threshold: 0.9
+  frcnn_resnet:
+    name: "frcnn-resnet"
+    confidence_threshold: 0.8
+  retinanet:
+    name: "retinanet"
+    confidence_threshold: 0.6
+  yolov5s:
+    name: "yolov5s"
+    confidence_threshold: 0.6
+  # deta_swin_large is commented out in the original code
+  # deta_swin_large:
+  #   name: "jozhang97/deta-swin-large"
+  #   confidence_threshold: 0.5

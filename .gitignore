@@ -1,0 +1,19 @@
+# Configuration
+config.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-selfcheck.json
+*.egg-info/
+dist/
+build/
+
+# Image files generated
+*.jpg
+ALERT.jpg
