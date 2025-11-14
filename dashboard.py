@@ -1,7 +1,7 @@
 from flask import Flask, Response
 import cv2
 import threading
-from main import main as detection_thread
+from dashboard_main import main as detection_thread
 
 app = Flask(__name__)
 
