@@ -2,6 +2,7 @@ import cv2
 import time
 import threading
 import random
+import queue
 from datetime import datetime
 import torch
 
@@ -12,7 +13,7 @@ from config import (
     ALERT_COOLDOWN_THRESHOLD,
     ALERT_COOLDOWN,
 )
-from camera import initialize_camera
+from camera import initialize_camera, camera_reader_thread
 from alerts import initialize_bot, send_alert
 from model_loader import (
     run_detr,
@@ -28,16 +29,40 @@ def main(frame_callback=None):
     """
     Main function to run the object detection and alerting system.
     """
+    # Initialize camera and bot
     cam = initialize_camera()
     bot = initialize_bot()
     last_alert = 0
 
-    while True:
-        try:
-            s, img = cam.read()
-            if not s:
-                print("Failed to read frame from camera. Retrying...")
-                time.sleep(1)
+    # Initialize frame queue and camera thread
+    latest_frame_queue = queue.Queue(maxsize=1)
+    camera_thread_running = True
+
+    # Start camera reader thread
+    capture_thread = threading.Thread(
+        target=camera_reader_thread,
+        args=(cam, latest_frame_queue, lambda: camera_thread_running)
+    )
+    capture_thread.daemon = True
+    capture_thread.start()
+    print("Camera reader thread started.")
+
+    # Give camera time to warm up and fill queue
+    time.sleep(2)
+
+    try:
+        while True:
+            img = None
+            try:
+                # Get latest frame from queue without blocking
+                img = latest_frame_queue.get_nowait()
+            except queue.Empty:
+                # No new frame available, wait briefly
+                print("No new frame available, waiting...")
+                time.sleep(0.01)
+                continue
+
+            if img is None:
                 continue
 
             results = []
@@ -92,16 +117,25 @@ def main(frame_callback=None):
                                 )
                         cv2.imwrite("ALERT.jpg", img)
                         alert_thread = threading.Thread(target=send_alert, args=(bot,))
+                        alert_thread.daemon = True  # Allow exit without waiting
                         alert_thread.start()
 
                         # Scramble the seed to prevent sequential bad predictions
                         torch.manual_seed(random.randint(1, 3000000))
-                
-                if frame_callback:
-                    frame_callback(img)
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
+            if frame_callback:
+                frame_callback(img)
+
+    except KeyboardInterrupt:
+        print("Program interrupted by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # Stop camera thread and cleanup
+        camera_thread_running = False
+        if capture_thread and capture_thread.is_alive():
+            capture_thread.join(timeout=2)
+        print("Main program exiting.")
 
 if __name__ == "__main__":
     main()

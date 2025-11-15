@@ -2,12 +2,13 @@ import cv2
 import time
 import threading
 import random
+import queue
 import torch
 
 from config import (
     DEVICE,
 )
-from camera import initialize_camera
+from camera import initialize_camera, camera_reader_thread
 from model_loader import (
     run_detr,
     run_yolos,
@@ -22,14 +23,37 @@ def main(frame_callback=None):
     """
     Main function to run the object detection and streaming system.
     """
+    # Initialize camera
     cam = initialize_camera()
 
-    while True:
-        try:
-            s, img = cam.read()
-            if not s:
-                print("Failed to read frame from camera. Retrying...")
-                time.sleep(1)
+    # Initialize frame queue and camera thread
+    latest_frame_queue = queue.Queue(maxsize=1)
+    camera_thread_running = True
+
+    # Start camera reader thread
+    capture_thread = threading.Thread(
+        target=camera_reader_thread,
+        args=(cam, latest_frame_queue, lambda: camera_thread_running)
+    )
+    capture_thread.daemon = True
+    capture_thread.start()
+    print("Camera reader thread started.")
+
+    # Give camera time to warm up and fill queue
+    time.sleep(2)
+
+    try:
+        while True:
+            img = None
+            try:
+                # Get latest frame from queue without blocking
+                img = latest_frame_queue.get_nowait()
+            except queue.Empty:
+                # No new frame available, wait briefly
+                time.sleep(0.01)
+                continue
+
+            if img is None:
                 continue
 
             results = []
@@ -73,12 +97,20 @@ def main(frame_callback=None):
                     cv2.rectangle(
                         img, (startX, startY), (endX, endY), (25 * i, 255, 25 * i), 2
                     )
-            
+
             if frame_callback:
                 frame_callback(img)
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
+    except KeyboardInterrupt:
+        print("Program interrupted by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # Stop camera thread and cleanup
+        camera_thread_running = False
+        if capture_thread and capture_thread.is_alive():
+            capture_thread.join(timeout=2)
+        print("Dashboard main exiting.")
 
 if __name__ == "__main__":
     main()

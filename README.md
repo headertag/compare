@@ -14,35 +14,37 @@ The core philosophy is that by combining the outputs of diverse models—each wi
 -   **High-Accuracy Person Detection**: The ensemble approach significantly reduces false positives and negatives, providing reliable alerts.
 -   **Real-time Telegram Alerts**: Receive instant image alerts in your Telegram chat when a person is detected with high confidence.
 -   **Highly Configurable**: Easily adjust model confidence thresholds, alert sensitivity, camera settings, and more.
--   **Efficient & Modern Codebase**: A modular and testable architecture that avoids disk I/O for image processing.
+-   **Efficient & Modern Codebase**: A modular, thread-safe architecture with dedicated camera capture thread for optimal performance.
 -   **CPU & GPU Support**: Automatically detects and uses a CUDA-enabled GPU, with a seamless fallback to CPU if not available.
 -   **Web Dashboard**: A simple web interface to view the live camera feed with bounding boxes.
 
 ## ⚡ Performance and Low Latency
 
-This system is designed for low-latency performance. By running the five object detection models in parallel threads, we maximize CPU/GPU utilization and ensure that the video stream is processed as quickly as possible.
+This system is designed for low-latency performance. The architecture employs a dedicated camera reader thread that continuously captures frames into a queue, decoupling camera I/O from model inference. The five object detection models run in parallel threads with proper memory management (`torch.no_grad()` contexts) to minimize GPU memory usage and maximize throughput.
 
-For the lowest possible latency and highest throughput, **a CUDA-enabled GPU is highly recommended**. The models will automatically run on the GPU if one is detected, significantly accelerating the inference process.
+For the lowest possible latency and highest throughput, **a CUDA-enabled GPU is highly recommended**. The models will automatically run on the GPU if one is detected, significantly accelerating the inference process. The frame queue ensures that slow inference doesn't create a backlog—old frames are automatically dropped to keep processing real-time.
 
 ## 🔧 How It Works
 
-1.  **Capture**: The system captures a frame from the video stream.
-2.  **Parallel Inference**: The frame is passed *in-memory* to all five models, which run in parallel threads for maximum efficiency.
-3.  **Ensemble Aggregation**: Each model returns a confidence score for the presence of a person. These scores are aggregated.
-4.  **Thresholding**: If the combined score surpasses a user-defined sensitivity threshold, an alert is triggered.
-5.  **Alerting**: An image of the event, with bounding boxes from the models, is sent to your specified Telegram chats.
+1.  **Camera Thread**: A dedicated background thread continuously reads frames from the camera and places them in a queue (maxsize=1), automatically discarding old frames to prevent buffering lag.
+2.  **Frame Retrieval**: The main processing loop retrieves the latest frame from the queue without blocking.
+3.  **Parallel Inference**: The frame is passed in-memory to all five models, which run in parallel threads for maximum efficiency. Each model runs within a `torch.no_grad()` context to prevent gradient accumulation and optimize GPU memory usage.
+4.  **Thread-Safe Aggregation**: Each model returns a confidence score for the presence of a person. These scores are collected using thread-safe locks and aggregated.
+5.  **Thresholding**: If the combined score surpasses a user-defined sensitivity threshold, an alert is triggered.
+6.  **Alerting**: An image of the event, with bounding boxes from the models, is saved and sent to your specified Telegram chats via daemon threads.
 
 ## 📂 Project Structure
 
-The project has been refactored into a modular and maintainable structure:
+The project follows a modular and maintainable structure:
 
 ```
 /
-├── main.py             # Main application entry point
+├── main.py             # Main application entry point with queue-based frame processing
 ├── dashboard.py        # Web dashboard for live feed
+├── dashboard_main.py   # Detection loop for web dashboard streaming
 ├── config.py           # Configuration loading and management
-├── camera.py           # Camera handling
-├── model_loader.py     # Model loading and inference logic
+├── camera.py           # Camera initialization and dedicated reader thread
+├── model_loader.py     # Model loading and inference logic with thread-safe operations
 ├── alerts.py           # Telegram alerting functionality
 ├── tests/              # Unit and integration tests
 ├── config.yaml         # Your local configuration
