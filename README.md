@@ -115,5 +115,27 @@ A `tests/` directory has been set up with `pytest`. You can run the tests with:
 python -m pytest
 ```
 
+## Running on NVIDIA Jetson Orin Nano
+
+Note: This was tested with JetPack 6.2
+
+## Install the container tools
+
+```
+git clone https://github.com/dusty-nv/jetson-containers
+bash jetson-containers/install.sh
+
+# automatically pull & run any container
+jetson-containers run $(autotag l4t-pytorch)
+```
+
+Then checkout the repository and complete the earlier steps while within the containerized environment. If you have trouble installing from requirements.txt you can try doing things manually with:
+
+```
+pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
+pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0"
+``
+
+
 ---
 *This project demonstrates the power of ensemble learning in practical, real-world applications. By moving beyond single-model solutions, we unlock a new level of reliability and performance.*
