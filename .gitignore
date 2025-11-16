@@ -22,3 +22,7 @@ ALERT.jpg
 *.swp
 /tmp/
 *.pt
+
+# old versions
+compare4.py
+compare3*

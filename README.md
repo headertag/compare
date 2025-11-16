@@ -132,9 +132,10 @@ jetson-containers run $(autotag l4t-pytorch)
 Then checkout the repository and complete the earlier steps while within the containerized environment. If you have trouble installing from requirements.txt you can try doing things manually with:
 
 ```
+apt remove python3-blinker
 pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
-pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0"
-``
+pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0" flask pytest
+```
 
 
 ---

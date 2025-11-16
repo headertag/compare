@@ -41,6 +41,9 @@ if __name__ == "__main__":
     det_thread = threading.Thread(target=detection_thread, args=(update_frame,))
     det_thread.daemon = True
     det_thread.start()
+    print("Detection thread started")
 
     # Start the Flask app
-    app.run(debug=True, host="0.0.0.0", port=8080)
+    # use_reloader=False prevents Flask from spawning duplicate processes
+    # which would create multiple camera instances
+    app.run(debug=True, host="0.0.0.0", port=8080, use_reloader=False)
