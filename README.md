@@ -115,7 +115,7 @@ A `tests/` directory has been set up with `pytest`. You can run the tests with:
 python -m pytest
 ```
 
-## Running on NVIDIA Jetson Orin Nano
+## 🤖 Running on NVIDIA Jetson Orin Nano
 
 Note: This was tested with JetPack 6.2
 
