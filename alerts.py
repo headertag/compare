@@ -11,5 +11,6 @@ def send_alert(bot, image_path='ALERT.jpg'):
         for chat_id in TELEGRAM_CHAT_IDS:
             try:
                 bot.sendPhoto(chat_id, alert_image)
+                alert_image.seek(0)
             except Exception as e:
                 print(f"Failed to send photo to {chat_id}: {e}")

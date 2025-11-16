@@ -1,3 +1,4 @@
+import time
 from flask import Flask, Response
 import cv2
 import threading
@@ -19,15 +20,31 @@ def generate_frames():
     """Generator function to yield frames for the web feed."""
     global latest_frame
     while True:
+        frame_to_encode = None
+        
+        # --- This is the critical change ---
+        # 1. Acquire the lock *only* to copy the latest frame
         with frame_lock:
             if latest_frame is not None:
-                (flag, encodedImage) = cv2.imencode(".jpg", latest_frame)
-                if not flag:
-                    continue
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + bytearray(encodedImage) + b"\r\n"
-                )
+                frame_to_encode = latest_frame.copy()
+        # 2. The lock is NOW RELEASED
+
+        if frame_to_encode is not None:
+            # 3. Encode the image *outside* the lock
+            (flag, encodedImage) = cv2.imencode(".jpg", frame_to_encode)
+            if not flag:
+                continue
+            
+            # 4. Yield the frame
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + bytearray(encodedImage) + b"\r\n"
+            )
+        
+        # 5. Add a small sleep to prevent this loop from
+        #    hogging the CPU and starving the update_frame thread.
+        #    This aims for a max of ~60 FPS.
+        time.sleep(0.016)
 
 @app.route("/")
 def index():
