@@ -6,6 +6,7 @@ import torch
 
 from config import (
     DEVICE,
+    ALERT_SENSITIVITY_THRESHOLD,
 )
 from camera import get_camera_manager
 from model_loader import (
@@ -28,6 +29,14 @@ def main(frame_callback=None):
 
     # Give camera time to warm up
     time.sleep(2)
+
+    model_colors = {
+        "detr": (255, 0, 0),  # Red
+        "yolos": (0, 0, 255),  # Blue
+        "frcnn": (204, 204, 0),  # Yellow
+        "retinanet": (0, 204, 204),  # Cyan
+        "yolov5": (255, 102, 0),  # Orange
+    }
 
     try:
         while True:
@@ -54,6 +63,7 @@ def main(frame_callback=None):
                         results,
                         multi_box,
                         MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
+                        "frcnn",
                     ),
                 ),
                 threading.Thread(
@@ -64,6 +74,7 @@ def main(frame_callback=None):
                         results,
                         multi_box,
                         MODELS_CONFIG["retinanet"]["confidence_threshold"],
+                        "retinanet",
                     ),
                 ),
                 threading.Thread(target=run_yolov5, args=(img, results, multi_box)),
@@ -74,12 +85,16 @@ def main(frame_callback=None):
             for t in threads:
                 t.join()
 
+            alert_condition = sum(results) >= ALERT_SENSITIVITY_THRESHOLD
+
             if multi_box:
-                for i, box in enumerate(multi_box[:3]):
+                for box, model_name in multi_box:
                     startX, startY, endX, endY = [int(p) for p in box]
+                    color = (0, 255, 0) if alert_condition else model_colors.get(model_name, (255, 255, 255))
                     cv2.rectangle(
-                        img, (startX, startY), (endX, endY), (25 * i, 255, 25 * i), 2
+                        img, (startX, startY), (endX, endY), color, 2
                     )
+                    cv2.putText(img, model_name, (endX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             if frame_callback:
                 frame_callback(img)

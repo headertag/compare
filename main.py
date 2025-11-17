@@ -63,6 +63,7 @@ def main(frame_callback=None):
                         results,
                         multi_box,
                         MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
+                        "frcnn",
                     ),
                 ),
                 threading.Thread(
@@ -73,6 +74,7 @@ def main(frame_callback=None):
                         results,
                         multi_box,
                         MODELS_CONFIG["retinanet"]["confidence_threshold"],
+                        "retinanet",
                     ),
                 ),
                 threading.Thread(target=run_yolov5, args=(img, results, multi_box)),

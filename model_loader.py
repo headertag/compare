@@ -81,7 +81,7 @@ def run_detr(img, results_list, box_list):
             if detr_model.config.id2label[label.item()] == "person":
                 with results_lock:
                     results_list.append(float(score.item() / 2))
-                    box_list.append(box.tolist())
+                    box_list.append((box.tolist(), "detr"))
                 break
 
 def run_yolos(img, results_list, box_list):
@@ -97,10 +97,10 @@ def run_yolos(img, results_list, box_list):
             if yolos_model.config.id2label[label.item()] == "person":
                 with results_lock:
                     results_list.append(float(score.item() / 2))
-                    box_list.append(box.tolist())
+                    box_list.append((box.tolist(), "yolos"))
                 break
 
-def run_torchvision_model(model, img, results_list, box_list, confidence_threshold):
+def run_torchvision_model(model, img, results_list, box_list, confidence_threshold, model_name):
     """Runs inference using a torchvision model."""
     with torch.no_grad():
         frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -118,7 +118,7 @@ def run_torchvision_model(model, img, results_list, box_list, confidence_thresho
                     box = detections["boxes"][i].detach().cpu().numpy()
                     with results_lock:
                         results_list.append(float(confidence))
-                        box_list.append(box)
+                        box_list.append((box, model_name))
                     break
 
 def run_yolov5(img, results_list, box_list):
@@ -130,5 +130,5 @@ def run_yolov5(img, results_list, box_list):
             if i[-1] == "person" and i[-3] > MODELS_CONFIG["yolov5s"]["confidence_threshold"]:
                 with results_lock:
                     results_list.append(float(i[-3]))
-                    # YOLOv5 doesn't provide a single box, so we don't append to box_list
+                    box_list.append((i[:4], "yolov5"))
                 break
