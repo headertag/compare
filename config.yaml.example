@@ -11,7 +11,9 @@ alerting:
   sensitivity_threshold: 2.3
 
 camera:
+  # default is /dev/video0
   index: 0
+  #index: "your-sample-video.mp4" # this will also work in place of a physical device
   width: 1920
   height: 1080
 
