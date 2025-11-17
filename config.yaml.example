@@ -40,3 +40,6 @@ models:
   # deta_swin_large:
   #   name: "jozhang97/deta-swin-large"
   #   confidence_threshold: 0.5
+
+dashboard:
+  remove_background: false

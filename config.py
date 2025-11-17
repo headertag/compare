@@ -38,3 +38,6 @@ COCO_CLASSES_PATH = config["processing"]["coco_classes_path"]
 
 # Models
 MODELS_CONFIG = config["models"]
+
+# Dashboard
+REMOVE_BACKGROUND = config["dashboard"]["remove_background"]
