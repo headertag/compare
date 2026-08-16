@@ -117,7 +117,9 @@ python -m pytest
 
 ## 🤖 Running on NVIDIA Jetson Orin Nano
 
-Note: This was tested with JetPack 6.2
+This solution has been tested with the JetPack 6.2 install from [NVIDIA jetpack-sdk-62](https://developer.nvidia.com/embedded/jetpack-sdk-62) which is ~11GB then you can create the bootable SD for your Jetson.
+
+Currently I'm using Samsung Pro microSD with an Insignia microSD to USB adapter flashed using [balenaEtcher](https://etcher.balena.io/#download-etcher) application.
 
 ## Install the container tools
 
