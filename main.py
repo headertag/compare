@@ -95,8 +95,8 @@ def main(frame_callback=None):
                         print(f"Alert triggered. Score: {sum(results)}")
                         last_alert = current_epoch
                         if multi_box:
-                            for i, box in enumerate(multi_box[:3]):
-                                startX, startY, endX, endY = [int(p) for p in box]
+                            for i, (box_coords, model_name) in enumerate(multi_box[:3]):
+                                startX, startY, endX, endY = [int(p) for p in box_coords]
                                 cv2.rectangle(
                                     img, (startX, startY), (endX, endY), (25 * i, 255, 25 * i), 2
                                 )
