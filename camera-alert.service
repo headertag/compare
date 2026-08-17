@@ -1,0 +1,20 @@
+[Unit]
+Description=Camera Object Detection Alert System
+After=network.target
+
+[Service]
+# Update 'User' and the paths below to match your deployment environment
+User=march
+WorkingDirectory=/home/march/compare
+# Executing directly from the venv bin folder loads the environment perfectly!
+ExecStart=/home/march/compare/venv/bin/python /home/march/compare/main.py
+
+# Restart behavior
+Restart=always
+RestartSec=3
+
+# Prevent python from buffering logs so they show up immediately
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

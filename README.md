@@ -143,4 +143,27 @@ pip install --index-url https://pypi.org/simple transformers imutils opencv-pyth
 
 
 ---
+
+## Running as a Background Service
+
+For continuous operation (restarting on crash and starting on boot), use the included systemd service file (`camera-alert.service`).
+
+1. **Update Paths:** Edit `camera-alert.service` to match your environment. You will need to update `User`, `WorkingDirectory`, and the paths in `ExecStart` (ensure `ExecStart` points to the `python` binary inside your virtual environment).
+2. **Install Service:** Copy the file to the systemd directory:
+   ```bash
+   sudo cp camera-alert.service /etc/systemd/system/
+   ```
+3. **Enable and Start:**
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable camera-alert.service
+   sudo systemctl start camera-alert.service
+   ```
+4. **Manage the Service:**
+   - **View Logs Live:** `sudo journalctl -u camera-alert.service -f`
+   - **Check Status:** `sudo systemctl status camera-alert.service`
+   - **Restart:** `sudo systemctl restart camera-alert.service`
+   - **Stop:** `sudo systemctl stop camera-alert.service`
+
+---
 *This project demonstrates the power of ensemble learning in practical, real-world applications. By moving beyond single-model solutions, we unlock a new level of reliability and performance.*
