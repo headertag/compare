@@ -51,6 +51,7 @@ The project follows a modular and maintainable structure:
 ├── config.yaml         # Your local configuration
 ├── config.yaml.example # Example configuration
 ├── requirements.txt    # Project dependencies
+├── camera-alert.service# systemd service template for background execution
 ```
 
 ## 🚀 Setup
