@@ -117,6 +117,8 @@ python -m pytest
 
 ## 🤖 Running on NVIDIA Jetson Orin Nano
 
+*Tip: If you even run into odd "L4T Recovery" errors, you need to go into the bios device manager, NVIDIA Configuration for L4T and set the OS chain A status back to Normal. This could indicate that something is wrong with your microSD but it will help unblock replacing with a new one.*
+
 This solution has been tested with the JetPack 6.2 install from [NVIDIA jetpack-sdk-62](https://developer.nvidia.com/embedded/jetpack-sdk-62) which is ~11GB then you can create the bootable SD for your Jetson.
 
 Currently I'm using Samsung Pro microSD with an Insignia microSD to USB adapter flashed using [balenaEtcher](https://etcher.balena.io/#download-etcher) application.
