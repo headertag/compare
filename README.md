@@ -65,7 +65,7 @@ cd compare
 ### 2. Create a Virtual Environment (Recommended)
 
 ```bash
-python3 -m venv --without-pip venv
+python3 -m venv venv
 source venv/bin/activate
 ```
 
