@@ -54,7 +54,7 @@ The project follows a modular and maintainable structure:
 ```
 
 ## 🚀 Setup
-
+apt-cache show nvidia-jetpack
 ### 1. Clone the Repository
 
 ```bash
@@ -115,34 +115,11 @@ A `tests/` directory has been set up with `pytest`. You can run the tests with:
 python -m pytest
 ```
 
-## 🤖 Running on NVIDIA Jetson Orin Nano
+## 🤖 Running on NVIDIA Jetson Orin Nano with Samsung Pro microSD
 
 *Tip: If you even run into odd "L4T Recovery" errors, you need to go into the bios device manager, NVIDIA Configuration for L4T and set the OS chain A status back to Normal. This could indicate that something is wrong with your microSD but it will help unblock replacing with a new one.*
 
-This solution has been tested with the JetPack 6.2 install from [NVIDIA jetpack-sdk-62](https://developer.nvidia.com/embedded/jetpack-sdk-62) which is ~11GB then you can create the bootable SD for your Jetson.
-
-Currently I'm using Samsung Pro microSD with an Insignia microSD to USB adapter flashed using [balenaEtcher](https://etcher.balena.io/#download-etcher) application.
-
-## Install the container tools
-
-```
-git clone https://github.com/dusty-nv/jetson-containers
-bash jetson-containers/install.sh
-
-# automatically pull & run any container
-jetson-containers run $(autotag l4t-pytorch)
-```
-
-Then checkout the repository and complete the earlier steps while within the containerized environment. If you have trouble installing from requirements.txt you can try doing things manually with:
-
-```
-apt remove python3-blinker
-pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
-pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0" flask pytest
-```
-
-
----
+This solution has been tested with the JetPack Version: 7.2-b184 from [jetsoninstaller-r39.2.1-2026-08-07-18-30-47-arm64.iso](https://developer.nvidia.com/embedded/jetpack-sdk-62](https://drive.google.com/file/d/11-7aLMOGc64CafCbief7W18GNnfIgFuS/view?usp=sharing) then you can create the bootable installer using the ISO with the [balenaEtcher](https://etcher.balena.io/#download-etcher) application. This ISO will handle any firmware upgrades needed.
 
 ## Running as a Background Service
 
@@ -165,5 +142,23 @@ For continuous operation (restarting on crash and starting on boot), use the inc
    - **Restart:** `sudo systemctl restart camera-alert.service`
    - **Stop:** `sudo systemctl stop camera-alert.service`
 
----
+
 *This project demonstrates the power of ensemble learning in practical, real-world applications. By moving beyond single-model solutions, we unlock a new level of reliability and performance.*
+
+## EXPERIMENTAL/UNSTABLE - Install the container tools
+
+```
+git clone https://github.com/dusty-nv/jetson-containers
+bash jetson-containers/install.sh
+
+# automatically pull & run any container
+jetson-containers run $(autotag l4t-pytorch)
+```
+
+Then checkout the repository and complete the earlier steps while within the containerized environment. If you have trouble installing from requirements.txt you can try doing things manually with:
+
+```
+apt remove python3-blinker
+pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
+pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0" flask pytest
+```
