@@ -41,6 +41,8 @@ The project follows a modular and maintainable structure:
 ```
 /
 ├── main.py             # Main application entry point with queue-based frame processing
+├── view.py             # Ultra-lightweight local desktop screen monitor viewer
+├── streamer.py         # Low-latency HTTP MJPEG streamer and shared memory frame broadcaster
 ├── dashboard.py        # Web dashboard for live feed
 ├── dashboard_main.py   # Detection loop for web dashboard streaming
 ├── config.py           # Configuration loading and management
@@ -90,17 +92,42 @@ Now, edit `config.yaml` with your settings:
 -   **`telegram.token`**: Your Telegram bot token.
 -   **`telegram.chat_ids`**: A list of chat IDs to send alerts to.
 -   **`processing.device`**: Set to `"cuda"` if you have a compatible GPU, otherwise `"cpu"` (default).
+-   **`camera.index`**: Index of your camera (e.g. `0` or `1`). See [CAMERA_TROUBLESHOOTING.md](CAMERA_TROUBLESHOOTING.md) for USB/HDMI capture setup and diagnosis (`python test_camera.py`).
 -   Adjust other settings like `camera` and `alerting` thresholds as needed.
 
 ## 🏃 Usage
 
-To start the main application (command-line only):
+### 1. Running the System
+To start the main application manually (or let `camera-alert.service` run it automatically in the background):
 
 ```bash
 python main.py
 ```
 
-To view the live feed with bounding boxes in your browser, run the web dashboard:
+### 2. Live Monitor Preview (Local Desktop & Remote)
+
+The system automatically pushes processed frames with candidate bounding boxes and detection metrics to a shared-memory buffer (`/dev/shm/preview.jpg`) and a built-in low-latency HTTP streaming server.
+
+#### A. Local Screen Viewer (`view.py`)
+To monitor the live video feed directly on your Ubuntu desktop screen with minimal memory footprint (~20MB RAM, zero browser overhead):
+
+```bash
+python view.py
+```
+
+- **Fullscreen Mode:** `python view.py --fullscreen`
+- **Key Controls:** Press `f` to toggle fullscreen, `q` or `ESC` to exit.
+- *Note:* When launched from a Terminal window within the Ubuntu desktop session, `DISPLAY=:0` is **not required**. (If running remotely via SSH into the physical display, prefix with `DISPLAY=:0 python view.py`).
+
+#### B. Remote Web Browser Stream
+To monitor the live feed from a laptop, phone, or tablet on the same local network:
+
+- **Live Stream:** Open `http://<jetson-ip>:8080/` in any browser.
+- **Direct Snapshot:** `http://<jetson-ip>:8080/preview.jpg`
+
+### 3. Web Dashboard (Alternative)
+
+To run the legacy web dashboard with background segmentation:
 
 ```bash
 python dashboard.py

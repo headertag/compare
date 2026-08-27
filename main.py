@@ -14,6 +14,7 @@ from config import (
 )
 from camera import get_camera_manager
 from alerts import initialize_bot, send_alert
+from streamer import start_preview_server, get_broadcaster
 from model_loader import (
     run_detr,
     run_yolos,
@@ -28,6 +29,10 @@ def main(frame_callback=None):
     """
     Main function to run the object detection and alerting system.
     """
+    # Start live preview HTTP server (port 8080)
+    start_preview_server(host="0.0.0.0", port=8080)
+    broadcaster = get_broadcaster()
+
     # Get singleton camera manager
     camera = get_camera_manager()
     camera.start()
@@ -107,6 +112,14 @@ def main(frame_callback=None):
 
                         # Scramble the seed to prevent sequential bad predictions
                         torch.manual_seed(random.randint(1, 3000000))
+
+            # Broadcast latest frame with bounding boxes and detection metrics to HTTP preview
+            broadcaster.update_frame(
+                img,
+                results=results,
+                threshold=ALERT_SENSITIVITY_THRESHOLD,
+                multi_box=multi_box,
+            )
 
             if frame_callback:
                 frame_callback(img)

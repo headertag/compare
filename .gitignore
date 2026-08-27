@@ -16,7 +16,13 @@ build/
 
 # Image files generated
 *.jpg
+*.jpeg
+*.png
+*.JPG
+*.JPEG
+*.PNG
 ALERT.jpg
+preview.jpg
 
 # Temporary/swap files
 *.swp

@@ -1,6 +1,8 @@
 import cv2
 import threading
 import queue
+import time
+import glob
 from config import CAM_INDEX, CAM_WIDTH, CAM_HEIGHT
 
 class CameraManager:
@@ -31,10 +33,29 @@ class CameraManager:
         self.consumers = 0
         self.consumers_lock = threading.Lock()
 
+    def _open_camera(self):
+        """Helper to open camera and configure FourCC / resolution."""
+        if isinstance(CAM_INDEX, int):
+            self.cam = cv2.VideoCapture(CAM_INDEX, cv2.CAP_V4L2)
+        else:
+            self.cam = cv2.VideoCapture(CAM_INDEX)
+
+        if not self.cam.isOpened():
+            available = sorted(glob.glob('/dev/video*'))
+            print(f"[CAMERA] ❌ Error: Failed to open camera device '{CAM_INDEX}'.")
+            print(f"[CAMERA] Available video nodes in /dev/: {available if available else 'None found'}")
+            print(f"[CAMERA] Run 'python test_camera.py' or 'sudo modprobe uvcvideo' to troubleshoot.")
+            return False
+
+        # Set FourCC to MJPG for 4K / 1080p HDMI-to-USB capture cards
+        self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_WIDTH)
+        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_HEIGHT)
+        return True
+
     def start(self):
         """Start the camera capture thread if not already running."""
         import traceback
-        import sys
 
         with self.consumers_lock:
             self.consumers += 1
@@ -54,10 +75,8 @@ class CameraManager:
                 print(f"[CAMERA] Camera already running. Total consumers: {self.consumers}\n")
                 return
 
-            print("[CAMERA] Initializing camera...")
-            self.cam = cv2.VideoCapture(CAM_INDEX)
-            self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_WIDTH)
-            self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_HEIGHT)
+            print(f"[CAMERA] Initializing camera with index/source: {CAM_INDEX}...")
+            self._open_camera()
 
             self.running = True
             self.capture_thread = threading.Thread(target=self._reader_thread)
@@ -111,16 +130,34 @@ class CameraManager:
             return None
 
     def _reader_thread(self):
-        """Internal camera reader thread."""
+        """Internal camera reader thread with auto-retry and reconnection."""
+        consecutive_failures = 0
         while self.running:
-            if self.cam is None:
-                break
+            if self.cam is None or not self.cam.isOpened():
+                time.sleep(1)
+                if self.running:
+                    self._open_camera()
+                continue
 
             ret, frame = self.cam.read()
-            if not ret:
-                print("Failed to grab frame from camera.")
-                break
+            if not ret or frame is None:
+                consecutive_failures += 1
+                if consecutive_failures % 10 == 1:
+                    print(f"[CAMERA] ⚠️ Frame grab failed (consecutive retry #{consecutive_failures}). Waiting for video signal...")
+                time.sleep(0.1)
 
+                if consecutive_failures >= 30:
+                    print("[CAMERA] 🔄 Signal lost or timed out. Re-opening camera device...")
+                    if self.cam:
+                        self.cam.release()
+                        self.cam = None
+                    time.sleep(1)
+                    if self.running:
+                        self._open_camera()
+                    consecutive_failures = 0
+                continue
+
+            consecutive_failures = 0
             # Always keep only the latest frame in the queue
             if not self.frame_queue.empty():
                 try:
@@ -129,7 +166,7 @@ class CameraManager:
                     pass
             self.frame_queue.put(frame)
 
-        print("Camera reader thread stopped.")
+        print("[CAMERA] Camera reader thread stopped.")
 
 
 # Singleton instance
