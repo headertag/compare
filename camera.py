@@ -158,6 +158,12 @@ class CameraManager:
                 continue
 
             consecutive_failures = 0
+            # Ensure frame size does not exceed 2K (or configured CAM_WIDTH/CAM_HEIGHT)
+            if CAM_WIDTH and CAM_HEIGHT and (frame.shape[1] > CAM_WIDTH or frame.shape[0] > CAM_HEIGHT):
+                frame = cv2.resize(frame, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_AREA)
+            elif frame.shape[1] > 2560 or frame.shape[0] > 1440:
+                frame = cv2.resize(frame, (2560, 1440), interpolation=cv2.INTER_AREA)
+
             # Always keep only the latest frame in the queue
             if not self.frame_queue.empty():
                 try:

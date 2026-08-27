@@ -25,7 +25,7 @@ class PreviewBroadcaster:
         """Update current frame, draw candidate bounding boxes, and encode lightweight preview JPEG."""
         orig_h, orig_w = frame.shape[:2]
 
-        # Decouple preview resolution from 4K inference resolution for fast, low-latency streaming
+        # Decouple preview resolution from 2K inference resolution for fast, low-latency streaming
         if orig_w > target_width:
             scale = target_width / float(orig_w)
             target_h = int(orig_h * scale)

@@ -20,6 +20,8 @@ frame_lock = threading.Lock()
 # Background removal model
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 bg_model = AutoModelForImageSegmentation.from_pretrained("briaai/RMBG-1.4",trust_remote_code=True).to(device)
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
 
 def preprocess_image(im: np.ndarray, model_input_size: list) -> torch.Tensor:
     if len(im.shape) < 3:
@@ -64,6 +66,9 @@ def generate_frames():
 
                 with torch.no_grad():
                     result = bg_model(image)
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
                 result_image = postprocess_image(result[0][0], orig_im_size)
                 

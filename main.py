@@ -11,6 +11,8 @@ from config import (
     MIN_ALERT_INTERVAL,
     ALERT_COOLDOWN_THRESHOLD,
     ALERT_COOLDOWN,
+    CAM_WIDTH,
+    CAM_HEIGHT,
 )
 from camera import get_camera_manager
 from alerts import initialize_bot, send_alert
@@ -53,6 +55,12 @@ def main(frame_callback=None):
                 time.sleep(0.01)
                 continue
 
+            # Ensure frame size does not exceed 2K resolution before running inference
+            if CAM_WIDTH and CAM_HEIGHT and (img.shape[1] > CAM_WIDTH or img.shape[0] > CAM_HEIGHT):
+                img = cv2.resize(img, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_AREA)
+            elif img.shape[1] > 2560 or img.shape[0] > 1440:
+                img = cv2.resize(img, (2560, 1440), interpolation=cv2.INTER_AREA)
+
             results = []
             multi_box = []
 
@@ -89,6 +97,10 @@ def main(frame_callback=None):
                 t.start()
             for t in threads:
                 t.join()
+
+            # Release unreferenced GPU memory cache after ensemble inference
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
                 current_epoch = datetime.now().timestamp()

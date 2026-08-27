@@ -55,6 +55,9 @@ frcnn_model = load_torchvision_model(MODELS_CONFIG["frcnn_resnet"]["name"])
 retinanet_model = load_torchvision_model(MODELS_CONFIG["retinanet"]["name"])
 yolov5_model = load_yolov5_model()
 
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
 
 # --- Model Inference ---
 

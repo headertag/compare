@@ -11,7 +11,7 @@ import time
 import argparse
 import cv2
 
-def run_viewer(source="/dev/shm/preview.jpg", window_name="4K Camera Monitor Preview", fps=30, fullscreen=False):
+def run_viewer(source="/dev/shm/preview.jpg", window_name="2K Camera Monitor Preview", fps=30, fullscreen=False):
     # Check for DISPLAY environment variable
     if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
         print("⚠️ No graphical display environment found in current shell session.")
