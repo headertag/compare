@@ -68,13 +68,20 @@ models:
     confidence_threshold: 0.5
     weight: 0.5
     color: [180, 105, 255]
-  yolo11n:
+  yolo11m:
     type: "ultralytics"
-    name: "yolo11n.pt"
-    enabled: false # Set true to enable 2024 SOTA YOLO11 Nano (2.6M params, ~45ms)
+    name: "yolo11m.pt" # Options: yolo11n.pt (Nano), yolo11s.pt (Small), yolo11m.pt (Medium 20.1M params, ~51.5 mAP)
+    enabled: false # Set true to enable 2024 SOTA YOLO11 Medium
     confidence_threshold: 0.5
     weight: 0.5
     color: [50, 205, 50]
+  rtdetr_large:
+    type: "ultralytics"
+    name: "rtdetr-l.pt" # Real-time DETR transformer (32.1M params, ~53.1 mAP)
+    enabled: false
+    confidence_threshold: 0.5
+    weight: 0.5
+    color: [255, 20, 147]
 
 dashboard:
   remove_background: false
