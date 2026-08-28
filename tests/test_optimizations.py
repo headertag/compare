@@ -29,3 +29,18 @@ def test_torch_cuda_empty_cache_safe_execution():
         torch.cuda.empty_cache()
     # Should always succeed without exception
     assert True
+
+def test_broadcaster_event_driven_notification():
+    """Verify that PreviewBroadcaster increments frame_id and notifies waiting consumers."""
+    from streamer import PreviewBroadcaster
+    broadcaster = PreviewBroadcaster()
+    
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    initial_id = broadcaster.frame_id
+    
+    broadcaster.update_frame(frame, status_text="Test Event")
+    assert broadcaster.frame_id == initial_id + 1
+    
+    jpeg, new_id = broadcaster.get_jpeg_wait(last_seen_id=initial_id, timeout=0.1)
+    assert jpeg is not None
+    assert new_id == initial_id + 1

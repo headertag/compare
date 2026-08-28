@@ -67,9 +67,6 @@ def generate_frames():
                 with torch.no_grad():
                     result = bg_model(image)
 
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-
                 result_image = postprocess_image(result[0][0], orig_im_size)
                 
                 pil_mask_im = Image.fromarray(result_image)

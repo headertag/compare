@@ -107,18 +107,19 @@ def run_torchvision_model(model, img, results_list, box_list, confidence_thresho
     """Runs inference using a torchvision model."""
     with torch.no_grad():
         frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        frame = frame.transpose((2, 0, 1))
-        frame = np.expand_dims(frame, axis=0)
-        frame = frame / 255.0
-        frame = torch.FloatTensor(frame).to(DEVICE)
-        detections = model(frame)[0]
+        tensor = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).to(DEVICE, non_blocking=True).float().div_(255.0)
+        detections = model(tensor)[0]
 
-        for i in range(len(detections["boxes"])):
-            confidence = detections["scores"][i]
+        boxes = detections["boxes"]
+        scores = detections["scores"]
+        labels = detections["labels"]
+
+        for i in range(len(boxes)):
+            confidence = scores[i].item()
             if confidence > confidence_threshold:
-                idx = int(detections["labels"][i])
+                idx = int(labels[i].item())
                 if "person" in CLASSES[idx]:
-                    box = detections["boxes"][i].detach().cpu().numpy()
+                    box = boxes[i].detach().cpu().numpy()
                     with results_lock:
                         results_list.append(float(confidence))
                         box_list.append((box, model_name))

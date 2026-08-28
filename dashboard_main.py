@@ -9,6 +9,8 @@ from config import (
     ALERT_SENSITIVITY_THRESHOLD,
     CAM_WIDTH,
     CAM_HEIGHT,
+    EXECUTION_MODE,
+    INTER_FRAME_DELAY,
 )
 from camera import get_camera_manager
 from model_loader import (
@@ -50,52 +52,64 @@ def main(frame_callback=None):
                 time.sleep(0.01)
                 continue
 
-            # Ensure frame size does not exceed 2K resolution before running inference
-            if CAM_WIDTH and CAM_HEIGHT and (img.shape[1] > CAM_WIDTH or img.shape[0] > CAM_HEIGHT):
-                img = cv2.resize(img, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_AREA)
-            elif img.shape[1] > 2560 or img.shape[0] > 1440:
-                img = cv2.resize(img, (2560, 1440), interpolation=cv2.INTER_AREA)
-
             results = []
             multi_box = []
 
-            # The ensemble approach: running multiple models in parallel
-            threads = [
-                threading.Thread(target=run_detr, args=(img, results, multi_box)),
-                threading.Thread(target=run_yolos, args=(img, results, multi_box)),
-                threading.Thread(
-                    target=run_torchvision_model,
-                    args=(
-                        frcnn_model,
-                        img,
-                        results,
-                        multi_box,
-                        MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
-                        "frcnn",
+            # Ensemble execution: toggle between parallel threads or sequential execution
+            if EXECUTION_MODE == "parallel":
+                threads = [
+                    threading.Thread(target=run_detr, args=(img, results, multi_box)),
+                    threading.Thread(target=run_yolos, args=(img, results, multi_box)),
+                    threading.Thread(
+                        target=run_torchvision_model,
+                        args=(
+                            frcnn_model,
+                            img,
+                            results,
+                            multi_box,
+                            MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
+                            "frcnn",
+                        ),
                     ),
-                ),
-                threading.Thread(
-                    target=run_torchvision_model,
-                    args=(
-                        retinanet_model,
-                        img,
-                        results,
-                        multi_box,
-                        MODELS_CONFIG["retinanet"]["confidence_threshold"],
-                        "retinanet",
+                    threading.Thread(
+                        target=run_torchvision_model,
+                        args=(
+                            retinanet_model,
+                            img,
+                            results,
+                            multi_box,
+                            MODELS_CONFIG["retinanet"]["confidence_threshold"],
+                            "retinanet",
+                        ),
                     ),
-                ),
-                threading.Thread(target=run_yolov5, args=(img, results, multi_box)),
-            ]
+                    threading.Thread(target=run_yolov5, args=(img, results, multi_box)),
+                ]
 
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-
-            # Release unreferenced GPU memory cache after ensemble inference
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            else:
+                # Sequential mode: avoids overlapping activation memory & GIL lock contention
+                run_detr(img, results, multi_box)
+                run_yolos(img, results, multi_box)
+                run_torchvision_model(
+                    frcnn_model,
+                    img,
+                    results,
+                    multi_box,
+                    MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
+                    "frcnn",
+                )
+                run_torchvision_model(
+                    retinanet_model,
+                    img,
+                    results,
+                    multi_box,
+                    MODELS_CONFIG["retinanet"]["confidence_threshold"],
+                    "retinanet",
+                )
+                run_yolov5(img, results, multi_box)
 
             alert_condition = sum(results) >= ALERT_SENSITIVITY_THRESHOLD
 
@@ -110,6 +124,10 @@ def main(frame_callback=None):
 
             if frame_callback:
                 frame_callback(img)
+
+            # Thermal yield delay between frames to prevent continuous 100% duty cycle heat saturation
+            if INTER_FRAME_DELAY > 0:
+                time.sleep(INTER_FRAME_DELAY)
 
     except KeyboardInterrupt:
         print("Program interrupted by user.")

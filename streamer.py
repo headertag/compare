@@ -12,12 +12,15 @@ class PreviewBroadcaster:
     """
     Thread-safe broadcaster for the latest processed frame.
     Stores frame in memory and exports to /dev/shm/preview.jpg.
+    Uses Condition variables for zero-waste, change-driven streaming.
     """
     def __init__(self):
         self.lock = threading.Lock()
+        self.condition = threading.Condition(self.lock)
         self.latest_jpeg = None
         self.latest_frame = None
         self.last_update_time = 0
+        self.frame_id = 0
         self.shm_path = "/dev/shm/preview.jpg"
         self.local_path = "preview.jpg"
 
@@ -92,10 +95,12 @@ class PreviewBroadcaster:
         ret, jpeg = cv2.imencode('.jpg', preview_img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
         if ret:
             jpeg_bytes = jpeg.tobytes()
-            with self.lock:
+            with self.condition:
                 self.latest_jpeg = jpeg_bytes
                 self.latest_frame = preview_img
                 self.last_update_time = time.time()
+                self.frame_id += 1
+                self.condition.notify_all()
 
             # Atomic save to /dev/shm (RAM buffer) and local preview.jpg
             try:
@@ -110,6 +115,14 @@ class PreviewBroadcaster:
         with self.lock:
             return self.latest_jpeg
 
+    def get_jpeg_wait(self, last_seen_id=None, timeout=2.0):
+        """Wait for a new frame or timeout. Returns (jpeg_bytes, current_frame_id)."""
+        with self.condition:
+            if last_seen_id is None or self.frame_id != last_seen_id:
+                return self.latest_jpeg, self.frame_id
+            self.condition.wait(timeout=timeout)
+            return self.latest_jpeg, self.frame_id
+
 _broadcaster = PreviewBroadcaster()
 
 def get_broadcaster():
@@ -117,6 +130,8 @@ def get_broadcaster():
 
 class StreamingHandler(BaseHTTPRequestHandler):
     """HTTP handler serving MJPEG streams and snapshot JPEGs."""
+    timeout = 10
+
     def log_message(self, format, *args):
         # Suppress standard HTTP request logging
         return
@@ -215,9 +230,10 @@ class StreamingHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
 
+            current_id = None
             try:
                 while True:
-                    frame = broadcaster.get_jpeg()
+                    frame, current_id = broadcaster.get_jpeg_wait(last_seen_id=current_id, timeout=2.0)
                     if frame is not None:
                         self.wfile.write(b'--FRAME\r\n')
                         self.send_header('Content-Type', 'image/jpeg')
@@ -225,8 +241,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
                         self.end_headers()
                         self.wfile.write(frame)
                         self.wfile.write(b'\r\n')
-                    time.sleep(0.04)  # ~25 FPS max stream rate
-            except (ConnectionResetError, BrokenPipeError):
+            except (OSError, ConnectionError, Exception):
                 pass
 
         elif self.path in ('/preview.jpg', '/latest.jpg', '/snapshot.jpg'):

@@ -20,6 +20,8 @@ camera:
 processing:
   device: "cpu" # "cuda" or "cpu"
   coco_classes_path: "coco_classes.pickle"
+  execution_mode: "sequential" # "sequential" (for embedded/Tegra) or "parallel" (for high-end discrete GPUs)
+  inter_frame_delay: 0.1 # seconds (thermal yield sleep between frames, default 0.1s; set to 0 for max throughput)
 
 models:
   # Confidence thresholds for person detection

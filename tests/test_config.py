@@ -61,3 +61,10 @@ def test_get_device_cuda_fallback():
     if not torch.cuda.is_available():
         device = get_device("cuda")
         assert device.type == "cpu"
+
+def test_execution_mode_and_inter_frame_delay():
+    """Tests that execution_mode and inter_frame_delay are loaded properly."""
+    from config import EXECUTION_MODE, INTER_FRAME_DELAY
+    assert EXECUTION_MODE in ("sequential", "parallel")
+    assert isinstance(INTER_FRAME_DELAY, float)
+    assert INTER_FRAME_DELAY >= 0.0

@@ -125,12 +125,20 @@ class CameraManager:
     def get_frame(self):
         """Get the latest frame from the queue without blocking."""
         try:
-            return self.frame_queue.get_nowait()
+            frame = self.frame_queue.get_nowait()
+            if frame is None:
+                return None
+            # On-demand resize only when frame is actually fetched by a consumer
+            if CAM_WIDTH and CAM_HEIGHT and (frame.shape[1] > CAM_WIDTH or frame.shape[0] > CAM_HEIGHT):
+                frame = cv2.resize(frame, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+            elif frame.shape[1] > 2560 or frame.shape[0] > 1440:
+                frame = cv2.resize(frame, (2560, 1440), interpolation=cv2.INTER_LINEAR)
+            return frame
         except queue.Empty:
             return None
 
     def _reader_thread(self):
-        """Internal camera reader thread with auto-retry and reconnection."""
+        """Internal camera reader thread with auto-retry and reconnection (zero-waste raw DMA ingestion)."""
         consecutive_failures = 0
         while self.running:
             if self.cam is None or not self.cam.isOpened():
@@ -158,13 +166,8 @@ class CameraManager:
                 continue
 
             consecutive_failures = 0
-            # Ensure frame size does not exceed 2K (or configured CAM_WIDTH/CAM_HEIGHT)
-            if CAM_WIDTH and CAM_HEIGHT and (frame.shape[1] > CAM_WIDTH or frame.shape[0] > CAM_HEIGHT):
-                frame = cv2.resize(frame, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_AREA)
-            elif frame.shape[1] > 2560 or frame.shape[0] > 1440:
-                frame = cv2.resize(frame, (2560, 1440), interpolation=cv2.INTER_AREA)
 
-            # Always keep only the latest frame in the queue
+            # Always keep only the latest raw frame in the queue with zero compute overhead
             if not self.frame_queue.empty():
                 try:
                     self.frame_queue.get_nowait()  # Discard old frame

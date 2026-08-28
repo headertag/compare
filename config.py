@@ -35,6 +35,8 @@ CAM_HEIGHT = config["camera"]["height"]
 # Processing
 DEVICE = get_device(config["processing"]["device"])
 COCO_CLASSES_PATH = config["processing"]["coco_classes_path"]
+EXECUTION_MODE = config["processing"].get("execution_mode", "sequential")
+INTER_FRAME_DELAY = float(config["processing"].get("inter_frame_delay", 0.1))
 
 # Models
 MODELS_CONFIG = config["models"]
