@@ -61,6 +61,13 @@ models:
     confidence_threshold: 0.6
     weight: 1.0
     color: [0, 165, 255]
+  rf_detr_base:
+    type: "rf_detr"
+    name: "Roboflow/rf-detr-base"
+    enabled: false # Set true to enable Roboflow RF-DETR transformer model
+    confidence_threshold: 0.5
+    weight: 0.5
+    color: [180, 105, 255]
 
 dashboard:
   remove_background: false
