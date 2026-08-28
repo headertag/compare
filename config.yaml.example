@@ -24,26 +24,43 @@ processing:
   inter_frame_delay: 0.1 # seconds (thermal yield sleep between frames, default 0.1s; set to 0 for max throughput)
 
 models:
-  # Confidence thresholds for person detection
+  # Dynamic N-Models configuration: add, remove, enable/disable any model!
+  # Available types: "detr", "yolos", "torchvision", "yolov5", "rf_detr"
   detr_resnet_50:
+    type: "detr"
     name: "facebook/detr-resnet-50"
+    enabled: true
     confidence_threshold: 0.9
+    weight: 0.5
+    color: [0, 0, 255] # BGR color for bounding boxes
   yolos_tiny:
+    type: "yolos"
     name: "hustvl/yolos-tiny"
+    enabled: true
     confidence_threshold: 0.9
+    weight: 0.5
+    color: [255, 100, 0]
   frcnn_resnet:
+    type: "torchvision"
     name: "frcnn-resnet"
+    enabled: true
     confidence_threshold: 0.8
+    weight: 1.0
+    color: [0, 255, 255]
   retinanet:
+    type: "torchvision"
     name: "retinanet"
+    enabled: true
     confidence_threshold: 0.6
+    weight: 1.0
+    color: [255, 0, 255]
   yolov5s:
+    type: "yolov5"
     name: "yolov5s"
+    enabled: true
     confidence_threshold: 0.6
-  # deta_swin_large is commented out in the original code
-  # deta_swin_large:
-  #   name: "jozhang97/deta-swin-large"
-  #   confidence_threshold: 0.5
+    weight: 1.0
+    color: [0, 165, 255]
 
 dashboard:
   remove_background: false
