@@ -19,15 +19,7 @@ from config import (
 from camera import get_camera_manager
 from alerts import initialize_bot, send_alert
 from streamer import start_preview_server, get_broadcaster
-from model_loader import (
-    run_detr,
-    run_yolos,
-    run_torchvision_model,
-    run_yolov5,
-    frcnn_model,
-    retinanet_model,
-    MODELS_CONFIG,
-)
+from model_loader import get_model_pipeline
 
 def main(frame_callback=None):
     """
@@ -40,6 +32,9 @@ def main(frame_callback=None):
     # Get singleton camera manager
     camera = get_camera_manager()
     camera.start()
+
+    # Get dynamic model pipeline
+    pipeline = get_model_pipeline()
 
     bot = initialize_bot()
     last_alert = 0
@@ -57,64 +52,8 @@ def main(frame_callback=None):
                 time.sleep(0.01)
                 continue
 
-            results = []
-            multi_box = []
-
-            # Ensemble execution: toggle between parallel threads or sequential execution
-            if EXECUTION_MODE == "parallel":
-                threads = [
-                    threading.Thread(target=run_detr, args=(img, results, multi_box)),
-                    threading.Thread(target=run_yolos, args=(img, results, multi_box)),
-                    threading.Thread(
-                        target=run_torchvision_model,
-                        args=(
-                            frcnn_model,
-                            img,
-                            results,
-                            multi_box,
-                            MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
-                            "frcnn",
-                        ),
-                    ),
-                    threading.Thread(
-                        target=run_torchvision_model,
-                        args=(
-                            retinanet_model,
-                            img,
-                            results,
-                            multi_box,
-                            MODELS_CONFIG["retinanet"]["confidence_threshold"],
-                            "retinanet",
-                        ),
-                    ),
-                    threading.Thread(target=run_yolov5, args=(img, results, multi_box)),
-                ]
-
-                for t in threads:
-                    t.start()
-                for t in threads:
-                    t.join()
-            else:
-                # Sequential mode: avoids overlapping activation memory & GIL lock contention
-                run_detr(img, results, multi_box)
-                run_yolos(img, results, multi_box)
-                run_torchvision_model(
-                    frcnn_model,
-                    img,
-                    results,
-                    multi_box,
-                    MODELS_CONFIG["frcnn_resnet"]["confidence_threshold"],
-                    "frcnn",
-                )
-                run_torchvision_model(
-                    retinanet_model,
-                    img,
-                    results,
-                    multi_box,
-                    MODELS_CONFIG["retinanet"]["confidence_threshold"],
-                    "retinanet",
-                )
-                run_yolov5(img, results, multi_box)
+            # Run inference dynamically across all enabled models in pipeline
+            results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
 
             if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
                 current_epoch = datetime.now().timestamp()
@@ -145,6 +84,7 @@ def main(frame_callback=None):
                 results=results,
                 threshold=ALERT_SENSITIVITY_THRESHOLD,
                 multi_box=multi_box,
+                model_colors=pipeline.get_model_colors(),
             )
 
             if frame_callback:

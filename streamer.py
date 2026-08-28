@@ -24,7 +24,7 @@ class PreviewBroadcaster:
         self.shm_path = "/dev/shm/preview.jpg"
         self.local_path = "preview.jpg"
 
-    def update_frame(self, frame, results=None, threshold=2.3, multi_box=None, status_text="Monitoring", target_width=1920):
+    def update_frame(self, frame, results=None, threshold=2.3, multi_box=None, status_text="Monitoring", target_width=1920, model_colors=None):
         """Update current frame, draw candidate bounding boxes, and encode lightweight preview JPEG."""
         orig_h, orig_w = frame.shape[:2]
 
@@ -48,15 +48,18 @@ class PreviewBroadcaster:
         score = sum(results) if results else 0.0
         is_alert = score >= threshold
 
-        # Draw all candidate bounding boxes discovered across any of the 5 models
+        # Default fallback color mapping
+        default_model_colors = {
+            "detr": (0, 0, 255),       # Red
+            "yolos": (255, 100, 0),    # Cyan/Blue
+            "frcnn": (0, 255, 255),    # Yellow
+            "retinanet": (255, 0, 255), # Magenta
+            "yolov5": (0, 165, 255),   # Orange
+        }
+        active_model_colors = {**default_model_colors, **(model_colors or {})}
+
+        # Draw all candidate bounding boxes discovered across active models
         if multi_box:
-            model_colors = {
-                "detr": (0, 0, 255),       # Red
-                "yolos": (255, 100, 0),    # Cyan/Blue
-                "frcnn": (0, 255, 255),    # Yellow
-                "retinanet": (255, 0, 255), # Magenta
-                "yolov5": (0, 165, 255),   # Orange
-            }
             for i, item in enumerate(multi_box):
                 if len(item) == 2:
                     box_coords, model_name = item
@@ -69,7 +72,7 @@ class PreviewBroadcaster:
                 endX = int(box_coords[2] * scale)
                 endY = int(box_coords[3] * scale)
 
-                box_color = color_green if is_alert else model_colors.get(model_name, color_cyan)
+                box_color = color_green if is_alert else active_model_colors.get(model_name, color_cyan)
                 cv2.rectangle(preview_img, (startX, startY), (endX, endY), box_color, 2)
 
                 label = f"{model_name}"
