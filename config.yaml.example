@@ -68,6 +68,13 @@ models:
     confidence_threshold: 0.5
     weight: 0.5
     color: [180, 105, 255]
+  yolo11n:
+    type: "ultralytics"
+    name: "yolo11n.pt"
+    enabled: false # Set true to enable 2024 SOTA YOLO11 Nano (2.6M params, ~45ms)
+    confidence_threshold: 0.5
+    weight: 0.5
+    color: [50, 205, 50]
 
 dashboard:
   remove_background: false

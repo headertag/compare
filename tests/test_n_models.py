@@ -9,6 +9,7 @@ from model_loader import (
     YolosDetector,
     TorchvisionDetector,
     YOLOv5Detector,
+    UltralyticsDetector,
     create_detector,
     ModelPipeline,
 )
@@ -89,4 +90,19 @@ def test_rf_detr_factory_dispatch():
         assert isinstance(detector, RfDetrDetector)
         assert detector.weight == 0.5
         assert detector.color == (180, 105, 255)
+
+def test_ultralytics_factory_dispatch():
+    """Verify that create_detector properly selects UltralyticsDetector for YOLO11/YOLOv8."""
+    with patch("ultralytics.YOLO"):
+        config = {
+            "type": "ultralytics",
+            "name": "yolo11n.pt",
+            "confidence_threshold": 0.5,
+            "weight": 0.5,
+            "color": [50, 205, 50],
+        }
+        detector = create_detector("yolo11n", config, torch.device("cpu"))
+        assert isinstance(detector, UltralyticsDetector)
+        assert detector.weight == 0.5
+        assert detector.color == (50, 205, 50)
 

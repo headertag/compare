@@ -200,6 +200,31 @@ class YOLOv5Detector(BaseDetector):
                         box_list.append((i[:4], self.key))
                     break
 
+class UltralyticsDetector(BaseDetector):
+    """Ultralytics modern YOLO (YOLO11, YOLOv8, RT-DETR) handler."""
+    def __init__(self, key, config_dict, device):
+        super().__init__(key, config_dict, device)
+        if "color" not in config_dict:
+            self.color = (50, 205, 50)  # Bright Lime Green
+        from ultralytics import YOLO
+        self.device_str = "cuda" if device.type == "cuda" else "cpu"
+        self.model = YOLO(self.name)
+
+    def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
+        with torch.no_grad():
+            res = self.model(img, device=self.device_str, verbose=False)[0]
+            for box in res.boxes:
+                conf = float(box.conf[0].item())
+                if conf > self.confidence_threshold:
+                    cls_id = int(box.cls[0].item())
+                    label_name = res.names.get(cls_id, "")
+                    if label_name == "person" or "person" in str(label_name).lower():
+                        xyxy = box.xyxy[0].cpu().numpy()
+                        with results_lock:
+                            results_list.append(float(conf * self.weight))
+                            box_list.append((xyxy.tolist(), self.key))
+                        break
+
 # --- Model Factory & Dynamic Pipeline ---
 
 def create_detector(key: str, config_dict: dict, device: torch.device) -> BaseDetector:
@@ -208,7 +233,9 @@ def create_detector(key: str, config_dict: dict, device: torch.device) -> BaseDe
     name_str = config_dict.get("name", key).lower()
     key_str = key.lower()
 
-    if model_type == "rf_detr" or "rf_detr" in key_str or "rf-detr" in key_str or "rf_detr" in name_str or "rf-detr" in name_str:
+    if model_type in ("ultralytics", "yolo11", "yolov8", "rtdetr") or "yolo11" in key_str or "yolov8" in key_str or "yolo11" in name_str or "yolov8" in name_str:
+        return UltralyticsDetector(key, config_dict, device)
+    elif model_type == "rf_detr" or "rf_detr" in key_str or "rf-detr" in key_str or "rf_detr" in name_str or "rf-detr" in name_str:
         return RfDetrDetector(key, config_dict, device)
     elif model_type == "detr" or ("detr" in key_str and "rf" not in key_str and "rf" not in model_type):
         return DetrDetector(key, config_dict, device)
