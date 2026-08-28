@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from model_loader import (
     BaseDetector,
     DetrDetector,
+    RfDetrDetector,
     YolosDetector,
     TorchvisionDetector,
     YOLOv5Detector,
@@ -73,3 +74,19 @@ def test_model_pipeline_custom_detector_execution():
     colors = pipeline.get_model_colors()
     assert colors["mock1"] == (255, 0, 0)
     assert colors["mock2"] == (0, 255, 0)
+
+def test_rf_detr_factory_dispatch():
+    """Verify that create_detector properly selects RfDetrDetector for rf_detr configurations."""
+    with patch("transformers.AutoImageProcessor.from_pretrained"), patch("transformers.AutoModelForObjectDetection.from_pretrained"):
+        config = {
+            "type": "rf_detr",
+            "name": "Roboflow/rf-detr-base",
+            "confidence_threshold": 0.5,
+            "weight": 0.5,
+            "color": [180, 105, 255],
+        }
+        detector = create_detector("rf_detr_base", config, torch.device("cpu"))
+        assert isinstance(detector, RfDetrDetector)
+        assert detector.weight == 0.5
+        assert detector.color == (180, 105, 255)
+

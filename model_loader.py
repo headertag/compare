@@ -4,7 +4,14 @@ import pickle
 import cv2
 import threading
 from PIL import Image
-from transformers import DetrImageProcessor, DetrForObjectDetection, YolosImageProcessor, YolosForObjectDetection
+from transformers import (
+    DetrImageProcessor,
+    DetrForObjectDetection,
+    YolosImageProcessor,
+    YolosForObjectDetection,
+    AutoImageProcessor,
+    AutoModelForObjectDetection,
+)
 from torchvision.models import detection
 from config import DEVICE, COCO_CLASSES_PATH, MODELS_CONFIG
 
@@ -67,6 +74,37 @@ class DetrDetector(BaseDetector):
 
             for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
                 if self.model.config.id2label[label.item()] == "person":
+                    with results_lock:
+                        results_list.append(float(score.item() * self.weight))
+                        box_list.append((box.tolist(), self.key))
+                    break
+
+class RfDetrDetector(BaseDetector):
+    """RF-DETR (Roboflow) model handler."""
+    def __init__(self, key, config_dict, device):
+        super().__init__(key, config_dict, device)
+        if "weight" not in config_dict:
+            self.weight = 0.5
+        if "color" not in config_dict:
+            self.color = (180, 105, 255)  # Hot Pink
+        self.processor = AutoImageProcessor.from_pretrained(self.name)
+        self.model = AutoModelForObjectDetection.from_pretrained(self.name).to(self.device)
+        self.model.eval()
+
+    def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
+        with torch.no_grad():
+            img_enh = enhance_low_light(img)
+            image = Image.fromarray(img_enh)
+            inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+            outputs = self.model(**inputs)
+            target_sizes = torch.tensor([image.size[::-1]])
+            results = self.processor.post_process_object_detection(
+                outputs, threshold=self.confidence_threshold, target_sizes=target_sizes
+            )[0]
+
+            for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                label_name = self.model.config.id2label.get(label.item(), "")
+                if label_name == "person" or "person" in label_name.lower():
                     with results_lock:
                         results_list.append(float(score.item() * self.weight))
                         box_list.append((box.tolist(), self.key))
@@ -170,7 +208,9 @@ def create_detector(key: str, config_dict: dict, device: torch.device) -> BaseDe
     name_str = config_dict.get("name", key).lower()
     key_str = key.lower()
 
-    if model_type == "detr" or ("detr" in key_str and "rf" not in key_str and "rf" not in model_type):
+    if model_type == "rf_detr" or "rf_detr" in key_str or "rf-detr" in key_str or "rf_detr" in name_str or "rf-detr" in name_str:
+        return RfDetrDetector(key, config_dict, device)
+    elif model_type == "detr" or ("detr" in key_str and "rf" not in key_str and "rf" not in model_type):
         return DetrDetector(key, config_dict, device)
     elif model_type == "yolos" or "yolos" in key_str:
         return YolosDetector(key, config_dict, device)
