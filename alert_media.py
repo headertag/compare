@@ -18,7 +18,7 @@ class MediaConfig:
     video_enabled: bool = True
     history_frames: int = 60
     history_max_mb: float = 64.0
-    playback_fps: float = 5.0
+    playback_fps: float = 1.0
 
     def __post_init__(self):
         for name in ('zoom_enabled', 'video_enabled'):
@@ -115,14 +115,15 @@ class AlertHistory:
         self.size_bytes = 0
         self.source = None
 
-    def append(self, jpeg, timestamp, source):
+    def append(self, jpeg, timestamp, source, *, has_person=True):
         if source != self.source:
             self.frames.clear()
             self.size_bytes = 0
             self.source = source
         if not jpeg:
             return
-        frame = HistoryFrame(bytes(jpeg), timestamp)
+        # Empty observations still age out old detections within the rolling window.
+        frame = HistoryFrame(bytes(jpeg) if has_person else b'', timestamp)
         self.frames.append(frame)
         self.size_bytes += len(frame.jpeg)
         while self.frames and (len(self.frames) > self.config.history_frames or
@@ -130,7 +131,7 @@ class AlertHistory:
             self.size_bytes -= len(self.frames.popleft().jpeg)
 
     def snapshot(self):
-        return tuple(self.frames)
+        return tuple(frame for frame in self.frames if frame.jpeg)
 
 
 def encode_alert_video(frames, path, fps):

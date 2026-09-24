@@ -58,7 +58,7 @@ class AlertMediaSender:
         with tempfile.TemporaryDirectory(prefix='compare-alert-') as directory:
             video = Path(directory) / 'trajectory.mp4'
             have_video = False
-            if self.config.video_enabled and len(frames) > 1:
+            if self.config.video_enabled and frames:
                 try:
                     encode_alert_video(frames, video, self.config.playback_fps)
                     have_video = True

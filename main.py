@@ -66,7 +66,8 @@ def main(frame_callback=None):
             jpeg = broadcaster.update_frame(
                 display, results=results, threshold=ALERT_SENSITIVITY_THRESHOLD,
                 multi_box=multi_box, model_colors=pipeline.get_model_colors())
-            history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]))
+            history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]),
+                           has_person=bool(pipeline.preview_boxes))
 
             if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
                 current_epoch = datetime.now().timestamp()

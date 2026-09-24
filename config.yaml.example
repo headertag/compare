@@ -118,4 +118,4 @@ alert_media:
   video_enabled: true # Send an H.264 MP4 instead of a still photo when history exists
   history_frames: 60 # Last processed frames, including the alert-triggering frame
   history_max_mb: 64 # Compressed JPEG buffer; oldest frames are evicted if needed
-  playback_fps: 5 # 60 frames play in 12 seconds; capture times remain visible
+  playback_fps: 1 # One second per retained person frame; empty frames omitted

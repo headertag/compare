@@ -162,3 +162,32 @@ def test_default_zoom_doubles_previous_dimensions_when_pane_has_room():
     with patch('alert_media.cv2.resize', wraps=original_resize) as resize:
         draw_person_zoom(raw, [box], MediaConfig(), TrackingConfig(rows=3, columns=3))
     assert resize.call_args.args[1] == (120, 240)
+
+
+def test_empty_observations_are_omitted_but_age_out_old_people():
+    history = AlertHistory(MediaConfig(history_frames=3))
+    history.append(jpeg(10), 0, 'a', has_person=True)
+    history.append(jpeg(20), 1, 'a', has_person=False)
+    history.append(jpeg(30), 2, 'a', has_person=True)
+    assert [f.timestamp for f in history.snapshot()] == [0, 2]
+    assert history.size_bytes == len(jpeg(10)) + len(jpeg(30))
+    history.append(jpeg(40), 3, 'a', has_person=False)
+    assert [f.timestamp for f in history.snapshot()] == [2]
+    history.append(jpeg(), 4, 'new-source', has_person=False)
+    assert history.snapshot() == () and history.size_bytes == 0
+
+
+def test_single_person_frame_sends_one_fps_video(tmp_path):
+    bot = MagicMock()
+    sender = sender_without_thread(bot)
+    received = []
+    def upload(chat, clip, **kwargs):
+        path = tmp_path / f'{chat}.mp4'
+        path.write_bytes(clip.read())
+        cap = cv2.VideoCapture(str(path))
+        received.append((cap.get(cv2.CAP_PROP_FRAME_COUNT), cap.get(cv2.CAP_PROP_FPS)))
+        cap.release()
+    bot.sendVideo.side_effect = upload
+    sender.send_snapshot((HistoryFrame(jpeg(), 0),))
+    assert received == [(1, 1), (1, 1)]
+    bot.sendPhoto.assert_not_called()

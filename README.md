@@ -347,7 +347,7 @@ confidence, trajectory, scoring, and alert interval rules remain unchanged:
 insets use raw pixels and are drawn on a separate display copy. A magnifier is a
 viewing aid, not a declaration that a candidate has qualified for an alert.
 
-Telegram alerts now send a playable H.264 MP4 containing the **last 60 processed
+Telegram alerts now send a playable H.264 MP4 containing the **person-containing frames from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms
 and trajectory overlays. This is retrospective; the application does not wait
 for another 60 future frames before sending. The old trajectory history held
@@ -363,7 +363,7 @@ alert_media:
   video_enabled: true
   history_frames: 60
   history_max_mb: 64
-  playback_fps: 5
+  playback_fps: 1
 ```
 
 The default zoom is 6× (twice the previous 3× width and height), capped by the
@@ -377,9 +377,12 @@ limit clutter in crowded views. With tracking disabled, the legacy first-person
 per model detection behavior is preserved. Setting `video_enabled: false` sends
 a magnified still instead. `zoom_enabled: false` disables only magnification.
 
-A full buffer plays for 12 seconds at the default 5 FPS. These are **processed
-frames**, so 60 observations may cover substantially more than 12 seconds of
-real time on a slow inference setup. Telegram receives the MP4 without a caption.
+Playback defaults to **1 FPS**: each retained frame appears for one second. Frames
+without a current person box above its model confidence threshold are omitted,
+so clips may be shorter than 60 seconds. Historical/predicted boxes alone do not
+retain a frame. Empty frames still age out older detections from the 60-frame
+window; the live preview continues showing every frame. A single retained frame
+still sends as a one-second MP4. Capture intervals depend on inference latency. Telegram receives the MP4 without a caption.
 Startup, camera/processing interruptions, resolution changes, or the memory
 cap can result in fewer frames. The JPEG buffer is capped at 64 MiB by default;
 oldest frames are evicted when either the frame or byte limit is exceeded.

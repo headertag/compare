@@ -126,7 +126,8 @@ def main():
                 mosaic = draw_person_zoom(raw, pipeline.preview_boxes, media, pipeline.tracking_config, canvas=mosaic)
                 ok, encoded = cv2.imencode('.jpg', mosaic, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if ok:
-                    alert_history.append(encoded.tobytes(), frames * args.stride / fps, mosaic.shape[:2])
+                    alert_history.append(encoded.tobytes(), frames * args.stride / fps, mosaic.shape[:2],
+                                         has_person=bool(pipeline.preview_boxes))
             writer.write(mosaic)
             frames += 1
             if frames % 30 == 0:
