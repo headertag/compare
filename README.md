@@ -174,25 +174,11 @@ For continuous operation (restarting on crash and starting on boot), use the inc
 
 *This project demonstrates the power of ensemble learning in practical, real-world applications. By moving beyond single-model solutions, we unlock a new level of reliability and performance.*
 
-## EXPERIMENTAL/UNSTABLE - Install the container tools
-
-```
-git clone https://github.com/dusty-nv/jetson-containers
-bash jetson-containers/install.sh
-
-# automatically pull & run any container
-jetson-containers run $(autotag l4t-pytorch)
-```
-
-Then checkout the repository and complete the earlier steps while within the containerized environment. If you have trouble installing from requirements.txt you can try doing things manually with:
-
-```
-apt remove python3-blinker
-pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
-pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0" flask pytest
-```
-
 ## Trajectory tracking for camera grids
+
+![Animated 16:9 camera grid with pane-local person trajectories](docs/assets/trajectory-vtest.gif)
+
+Demo generated from [OpenCV’s `vtest.avi`](https://github.com/opencv/opencv/blob/master/samples/data/vtest.avi): seven moving panes, one frozen pane, and one single-frame appearance. Green tracks qualify for the score boost; amber tracks are waiting for movement.
 
 Trajectory tracking adds movement evidence to each model's person prediction.
 It is opt-in, and works in both the main alerting application and dashboard.
