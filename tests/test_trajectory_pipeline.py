@@ -103,7 +103,7 @@ def test_low_confidence_candidates_can_extend_and_boost():
     assert scores == pytest.approx([.3])
     detector.x = 19
     detector.score = .12
-    assert pipeline.run_inference(frame)[0] == pytest.approx([.18])  # Boost crosses .15 floor
+    assert pipeline.run_inference(frame)[0] == []  # Raw .12 cannot cross the .15 floor
 
 
 def test_resize_and_idle_gap_reset_history():
@@ -212,3 +212,37 @@ def test_seam_box_assigned_once_by_center(box, pane, local):
     pipeline.run_inference(frame)
     assert sum(len(t.tracks) for t in pipeline.trackers.values()) == 1
     assert pipeline.trackers[(pane, 'fake')].tracks[0].history[0][1] == local
+
+
+@pytest.mark.parametrize('mode', ['sequential', 'parallel'])
+@pytest.mark.parametrize('score', [.1, .59, .6])
+@pytest.mark.parametrize('weight', [.5, 1.0])
+def test_original_threshold_blocks_birth_even_with_large_boost(mode, score, weight):
+    pipeline, frame = make_pipeline(score_multiplier=10)
+    detector = pipeline.detectors[0]
+    detector.confidence_threshold = .6
+    detector.weight = weight
+    detector.score = score
+    for x in (10, 13, 16, 19, 22):
+        detector.x = x
+        assert pipeline.run_inference(frame, mode) == ([], [])
+        assert detector.candidate_threshold == .6
+    assert all(not t.tracks for t in pipeline.trackers.values())
+
+
+def test_below_original_threshold_cannot_extend_qualified_history():
+    pipeline, frame = make_pipeline()
+    detector = pipeline.detectors[0]
+    detector.confidence_threshold = .6
+    for x in (10, 13, 16):
+        detector.x = x
+        scores, _ = pipeline.run_inference(frame)
+    assert scores == pytest.approx([1.2])
+    detector.score = .5  # Above track low/high thresholds; below the original model cutoff
+    for x in (19, 22, 25):
+        detector.x = x
+        assert pipeline.run_inference(frame) == ([], [])
+    for tracker in pipeline.trackers.values():
+        assert len(tracker.tracks[0].history) == 3
+        assert tracker.tracks[0].missed == 3
+        assert not tracker.tracks[0].score_eligible

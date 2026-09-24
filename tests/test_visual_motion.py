@@ -55,7 +55,7 @@ def test_image_motion_remains_pane_local():
 
 class CandidateDetector(BaseDetector):
     def __init__(self):
-        super().__init__('candidate', dict(confidence_threshold=.8), torch.device('cpu'))
+        super().__init__('candidate', dict(confidence_threshold=.5), torch.device('cpu'))
         self.box = [20, 20, 50, 80]
         self.calls = 0
 
@@ -83,7 +83,7 @@ def test_static_scene_with_drifting_or_jittering_boxes_never_scores(path):
     assert p.detectors[0].calls == len(path)
 
 
-def test_real_translation_gets_boost_before_confidence_floor_and_stops():
+def test_accepted_translation_gets_boost_and_stops():
     p = pipeline()
     results = []
     for x in range(20, 44, 3):
@@ -93,7 +93,7 @@ def test_real_translation_gets_boost_before_confidence_floor_and_stops():
         scores, _ = p.run_inference(image)
         results.append(scores)
     assert results[0] == []
-    assert results[-1] == pytest.approx([.9])  # Raw .6 < model cutoff .8
+    assert results[-1] == pytest.approx([.9])  # Raw .6 already passed the original .5 cutoff
     assert p.run_inference(image.copy())[0] == []
     # Detector drifts over that stopped object: geometry alone must not revive it.
     for x in range(44, 56, 3):
@@ -106,8 +106,8 @@ def test_visual_evidence_required_on_multiple_frames():
     tracker = ByteTracker(cfg)
     for x in (20, 23, 26, 29):
         track = tracker.update([([x, 20, x + 30, 80], .6)])[0]
-        assert not qualify_track(track, cfg, .8, 0.)
-    assert not qualify_track(track, cfg, .8, .2)  # One flash cannot supply a trajectory
+        assert not qualify_track(track, cfg, .5, 0.)
+    assert not qualify_track(track, cfg, .5, .2)  # One flash cannot supply a trajectory
 
 
 def test_other_motion_in_same_pane_does_not_activate_static_region():
@@ -142,3 +142,13 @@ def test_subpixel_motion_can_pass_full_pipeline():
         p.detectors[0].box = [x, 20, x + 30, 80]
         scores, _ = p.run_inference(image)
     assert scores == pytest.approx([.9])
+
+
+def test_verified_movement_cannot_rescue_subthreshold_confidence():
+    cfg = TrackingConfig(min_movement_frames=3, score_multiplier=10, require_visual_motion=False)
+    tracker = ByteTracker(cfg)
+    for x in (20, 23, 26, 29):
+        track = tracker.update([([x, 20, x + 30, 80], .6)])[0]
+    assert track.movement_frames >= 3
+    assert not qualify_track(track, cfg, .8, 1.)
+    assert track.motion_reason == 'below original confidence threshold'

@@ -255,30 +255,36 @@ for `max_lost_frames`. `reset_tracking()` clears history when changing sources o
 seeking a video; image-size changes and idle gaps longer than `reset_gap_seconds`
 also clear history automatically.
 
-The motion-verified confidence is boosted **before** checking the model's
-`confidence_threshold`; previously the raw confidence cutoff prevented the boost
-from rescuing weaker candidates. Only currently verified tracks can score:
+Each model's existing **raw `confidence_threshold` is a hard gate before
+tracking**. Inference uses that original threshold, and the pipeline checks it
+again before inserting a box into any track history. A rejected detection cannot
+start, extend, or recover a trajectory, or receive a boost. Trajectory evidence
+only boosts predictions that the original model threshold already accepted:
 
 ```
-boosted confidence = person confidence × tracking.score_multiplier
-accept if boosted confidence > model confidence_threshold
-model vote = boosted confidence × model weight
+accept candidate only if raw person confidence > model confidence_threshold
+then require a verified trajectory
+model vote = raw person confidence × model weight × tracking.score_multiplier
 pane score = sum of each model's strongest qualified vote in that pane
 alert score = highest pane score
 ```
 
-For example, confidence `0.35`, model weight `1.0`, and multiplier `1.5` yield
-`0.525` once the trajectory qualifies, and can now cross a model cutoff of `0.5`. The multiplier increases evidence weight;
-it is not a calibrated probability. Crowd size does not multiply a model's vote,
-and different camera panes cannot combine votes to reach the alert threshold.
-Within a pane, scoring still aggregates model votes rather than attempting
+For example, with a model threshold of `0.5`, raw confidence `0.35` is rejected
+even with a multiplier of `10`. Raw confidence `0.6` passes that original gate
+and can contribute `0.9` with weight `1.0` and multiplier `1.5` after trajectory
+qualification. The multiplier changes ensemble evidence weight, not the raw
+confidence admission threshold or a calibrated probability.
+
+`tracking.low_threshold` only partitions **already accepted** detections for
+ByteTrack association; it never lowers a model's confidence cutoff. If the model
+cutoff is above `high_threshold`, there simply is no low-score association pool
+for that model. `high_threshold` remains the minimum for starting/recovering an
+identity and can impose an additional restriction when set above the model's
+cutoff. Model thresholds change only when you explicitly edit their settings.
+Crowd size does not multiply a model's vote, and different panes cannot combine
+votes. Within a pane, scoring aggregates model votes rather than attempting
 cross-model person re-identification.
 
-The boost can admit lower-confidence detections without changing the model's
-cutoff. You can also tune `confidence_threshold` (for example to `0.15`). `low_threshold` controls
-candidate collection *before* that scoring filter; set it at or below your
-lowest model scoring threshold divided by `score_multiplier`. `high_threshold` controls the confidence needed
-to establish/recover an identity; lower it too if persons never reach `0.4`.
 The existing `alerting.sensitivity_threshold` still applies to the boosted pane
 score. Tune these together on your camera footage; a trajectory does not guarantee
 that a moving detection is a person. A frozen-video control alone does not
@@ -305,7 +311,9 @@ python scripts/validate_trajectory_video.py \
   --controls --execution-mode parallel
 ```
 
-It runs YOLO11n and YOLOv8n on CUDA over 120 mosaics, each containing nine panes
+The offline demo explicitly sets each model's confidence threshold to `0.15`;
+this does not change your application's `models` settings. It runs YOLO11n and
+YOLOv8n on CUDA over 120 mosaics, each containing nine panes
 at 640 × 360 pixels in a 1920 × 1080 frame by default. Use
 `--width 3840 --height 2160` for 4K or set another output size; the same dynamic
 grid calculates every pane. Source footage is fitted with black padding where

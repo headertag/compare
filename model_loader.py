@@ -329,7 +329,7 @@ class ModelPipeline:
 
         def run_detector(detector):
             detector.collect_all = cfg.enabled
-            detector.candidate_threshold = cfg.low_threshold if cfg.enabled else detector.confidence_threshold
+            detector.candidate_threshold = detector.confidence_threshold
             scores, boxes = [], []
             detector.run(img, scores, boxes)
             return detector, scores, boxes
@@ -357,6 +357,10 @@ class ModelPipeline:
                     if (box.shape != (4,) or detector.weight <= 0 or
                             not math.isfinite(score) or not all(math.isfinite(v) for v in box)):
                         continue
+                    # Original model cutoff is a hard gate, before history or boosts.
+                    raw_confidence = score / detector.weight
+                    if raw_confidence <= detector.confidence_threshold:
+                        continue
                     left, top, right, bottom = map(float, box)
                     left, right = max(0., min(left, width)), max(0., min(right, width))
                     top, bottom = max(0., min(top, height)), max(0., min(bottom, height))
@@ -369,7 +373,7 @@ class ModelPipeline:
                     # A seam-straddling box belongs only to its center's pane.
                     local = np.array([max(left, x1) - x1, max(top, y1) - y1,
                                       min(right, x2) - x1, min(bottom, y2) - y1])
-                    grouped[pane].append((local, score / detector.weight))
+                    grouped[pane].append((local, raw_confidence))
         for pane, x1, y1, x2, y2 in panes:
             pane_results = []
             for detector, scores, boxes in outputs:

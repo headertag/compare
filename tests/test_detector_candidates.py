@@ -15,7 +15,7 @@ def test_all_people_exposed_only_when_tracking(kind, tracking):
     detector = kind.__new__(kind)
     BaseDetector.__init__(detector, 'test', dict(confidence_threshold=.1), torch.device('cpu'))
     detector.collect_all = tracking
-    detector.candidate_threshold = .05
+    detector.candidate_threshold = .1
     detector.model = MagicMock()
     boxes = torch.tensor([[10., 10., 30., 60.], [40., 10., 60., 60.]])
     scores = torch.tensor([.8, .2])
@@ -41,10 +41,10 @@ def test_all_people_exposed_only_when_tracking(kind, tracking):
     detector.run(np.zeros((100, 100, 3), np.uint8), found_scores, found_boxes)
     assert len(found_boxes) == len(found_scores) == (2 if tracking else 1)
     if kind in (DetrDetector, RfDetrDetector, YolosDetector):
-        assert detector.processor.post_process_object_detection.call_args.kwargs['threshold'] == .05
+        assert detector.processor.post_process_object_detection.call_args.kwargs['threshold'] == .1
     elif kind is UltralyticsDetector:
-        assert detector.model.call_args.kwargs['conf'] == .05
+        assert detector.model.call_args.kwargs['conf'] == .1
     elif kind is YOLOv5Detector:
-        assert detector.model.conf == .05
+        assert detector.model.conf == .1
     elif kind is TorchvisionDetector:
-        assert detector.model.roi_heads.score_thresh == .05
+        assert detector.model.roi_heads.score_thresh == .1

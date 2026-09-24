@@ -68,11 +68,15 @@ def main():
     if len(pipeline.detectors) != len(args.models):
         raise RuntimeError('Validation detector failed to load')
     inference_calls = {d.key: 0 for d in pipeline.detectors}
+    subthreshold_detections = {d.key: 0 for d in pipeline.detectors}
     for detector in pipeline.detectors:
         original_run = detector.run
-        def counted_run(img, scores, boxes, key=detector.key, run=original_run):
+        def counted_run(img, scores, boxes, key=detector.key, run=original_run,
+                        threshold=detector.confidence_threshold, weight=detector.weight):
             inference_calls[key] += 1
-            return run(img, scores, boxes)
+            result = run(img, scores, boxes)
+            subthreshold_detections[key] += sum(score / weight <= threshold for score in scores)
+            return result
         detector.run = counted_run
     capture = cv2.VideoCapture(args.video)
     if not capture.isOpened():
@@ -126,6 +130,8 @@ def main():
                   gpu=torch.cuda.get_device_name() if args.device == 'cuda' else None,
                   source=args.video, models=args.models, execution_mode=args.execution_mode,
                   tracking=config, controls=args.controls, inference_calls=inference_calls,
+                  confidence_thresholds={d.key: d.confidence_threshold for d in pipeline.detectors},
+                  subthreshold_detections=subthreshold_detections,
                   steady_inference_ms=float(np.mean([t['inference_seconds'] for t in stage_timings[1:]])) * 1000 if len(stage_timings) > 1 else None,
                   steady_tracking_ms=float(np.mean([t['tracking_seconds'] for t in stage_timings[1:]])) * 1000 if len(stage_timings) > 1 else None,
                   seconds_per_mosaic=float(np.mean(timings)) if timings else None,
@@ -133,6 +139,7 @@ def main():
                   panes=stats)
     (output / 'validation.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
+    assert not any(subthreshold_detections.values()), 'Detector emitted below its original confidence threshold'
     assert all(count == frames for count in inference_calls.values()), 'Expected one full-frame inference per model per frame'
     if args.controls:
         assert frames > 3, 'Too few frames'

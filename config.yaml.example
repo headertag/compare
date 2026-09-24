@@ -94,7 +94,7 @@ tracking:
   score_multiplier: 1.5 # Qualified model vote = confidence * model weight * this
   movement_pixels: 2.0 # Minimum NET center displacement over the movement window
   movement_box_fraction: 0.01 # Additional net-displacement floor relative to box diagonal
-  low_threshold: 0.1 # Candidate floor BEFORE tracking; low scores can extend tracks
+  low_threshold: 0.1 # ByteTrack association floor; NEVER overrides a model confidence_threshold
   high_threshold: 0.4 # Minimum confidence to start or recover a lost track
   movement_window_frames: 8 # Allows slow motion to accumulate instead of requiring 2px every frame
   net_displacement_box_fraction: 0.05 # Reject tiny wandering relative to object size

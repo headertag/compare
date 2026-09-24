@@ -299,16 +299,16 @@ not semantic person verification or full camera-motion compensation.
 
 
 def qualify_track(track, config, confidence_threshold, visual_fraction=0.0):
-    """Boost verified trajectory evidence before applying the model score floor."""
+    """Only originally accepted confidence scores can receive a trajectory boost."""
     track.visual_fraction = visual_fraction
     changed = visual_fraction >= config.visual_change_fraction
     track.visual_history.append(changed)
-    if track.movement_frames < config.min_movement_frames:
+    if track.score <= confidence_threshold:
+        track.motion_reason = 'below original confidence threshold'
+    elif track.movement_frames < config.min_movement_frames:
         track.motion_reason = 'waiting for trajectory'
     elif config.require_visual_motion and (not changed or sum(track.visual_history) < config.min_movement_frames):
         track.motion_reason = 'no verified image motion'
-    elif track.score * config.score_multiplier <= confidence_threshold:
-        track.motion_reason = 'below boosted score floor'
     else:
         track.motion_reason = 'qualified'
     track.score_eligible = track.motion_reason == 'qualified'
