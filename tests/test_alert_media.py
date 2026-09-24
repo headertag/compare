@@ -121,6 +121,7 @@ def test_video_upload_failure_falls_back_only_for_failed_recipient(tmp_path):
     with patch('alert_media.encode_alert_video', side_effect=encode):
         sender.send_snapshot((HistoryFrame(jpeg(), 0), HistoryFrame(jpeg(), 1)))
     assert videos == [(1, b'video'), (2, b'video')]
+    assert all("caption" not in call.kwargs for call in bot.sendVideo.call_args_list)
     assert photos == [1]
 
 

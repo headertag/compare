@@ -57,9 +57,6 @@ class AlertMediaSender:
         # Unique files and immutable JPEG bytes avoid concurrent ALERT.jpg races.
         with tempfile.TemporaryDirectory(prefix='compare-alert-') as directory:
             video = Path(directory) / 'trajectory.mp4'
-            caption = (f'Person alert: {len(frames)} processed frames, '
-                       f'{max(0, frames[-1].timestamp-frames[0].timestamp):.1f}s captured; '
-                       f'playback {self.config.playback_fps:g} fps. Insets show confidence-qualified candidates.')
             have_video = False
             if self.config.video_enabled and len(frames) > 1:
                 try:
@@ -72,7 +69,7 @@ class AlertMediaSender:
                     if have_video:
                         try:
                             with video.open('rb') as clip:
-                                self.bot.sendVideo(chat_id, clip, caption=caption, supports_streaming=True)
+                                self.bot.sendVideo(chat_id, clip, supports_streaming=True)
                             print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.', flush=True)
                             continue
                         except Exception as exc:

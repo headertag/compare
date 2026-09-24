@@ -379,8 +379,8 @@ a magnified still instead. `zoom_enabled: false` disables only magnification.
 
 A full buffer plays for 12 seconds at the default 5 FPS. These are **processed
 frames**, so 60 observations may cover substantially more than 12 seconds of
-real time on a slow inference setup; the clip caption states the observation
-span. Startup, camera/processing interruptions, resolution changes, or the memory
+real time on a slow inference setup. Telegram receives the MP4 without a caption.
+Startup, camera/processing interruptions, resolution changes, or the memory
 cap can result in fewer frames. The JPEG buffer is capped at 64 MiB by default;
 oldest frames are evicted when either the frame or byte limit is exceeded.
 Encoding and upload use one background worker with one queued snapshot, avoiding
