@@ -150,3 +150,32 @@ def test_invalid_candidates_are_dropped_and_history_is_clipped():
     for tracker in pipeline.trackers.values():
         assert len(tracker.tracks) == 1
         assert tracker.tracks[0].history[0][1] == (0, 0, 100, 100)
+
+
+def test_live_resolution_change_rebuilds_local_tracking():
+    pipeline, _ = make_pipeline()
+    detector = pipeline.detectors[0]
+    for width, height in [(1920, 1080), (3840, 2160), (1280, 720)]:
+        frame = np.zeros((height, width, 3), np.uint8)
+        for step, x in enumerate((10, 13, 16)):
+            detector.x = x
+            scores, boxes = pipeline.run_inference(frame)
+            if step == 0:
+                assert scores == []
+                assert all(len(t.tracks[0].history) == 1 for t in pipeline.trackers.values())
+        assert len(boxes) == 9
+        assert boxes[-1][0] == [16 + 2 * width // 3, 10 + 2 * height // 3,
+                                46 + 2 * width // 3, 60 + 2 * height // 3]
+        assert scores == pytest.approx([1.2])
+
+
+def test_widescreen_demo_preserves_source_proportions():
+    from scripts.validate_trajectory_video import build_mosaic
+    source = np.full((300, 400, 3), 255, np.uint8)
+    mosaic = build_mosaic(source, source, 1920, 1080)
+    assert mosaic.shape == (1080, 1920, 3)
+    # 4:3 footage fits as 480x360 within each 640x360 pane, with 80px side bars.
+    assert np.all(mosaic[:360, :80] == 0)
+    assert np.all(mosaic[:360, 80:560] == 255)
+    assert np.all(mosaic[:360, 560:640] == 0)
+    assert np.array_equal(mosaic[:360, :640], mosaic[720:, 1280:])

@@ -226,7 +226,13 @@ each pane. Camera boundaries never share identities or movement evidence.
 Models have separate histories so ensemble agreement within one frame cannot
 masquerade as multiple trajectory frames. Panes cover the whole input image;
 when dimensions are not divisible by the grid size, pane dimensions differ by
-at most one pixel. The input must already be a camera mosaic with matching
+at most one pixel. The grid scales dynamically to the actual processed frame:
+1920 × 1080 yields nine 640 × 360 panes; 3840 × 2160 yields nine 1280 × 720
+panes. A 3 × 3 grid on a 16:9 frame therefore also gives 16:9 panes (subject to
+one-pixel rounding at resolutions such as 1280 × 720). No pane dimensions need
+to be configured. If camera processing downsizes the input, the grid uses that
+resized frame; set `camera.width: 3840` and `camera.height: 2160` to retain 4K.
+A resolution change automatically clears old tracking coordinates. The input must already be a camera mosaic with matching
 boundaries; the application does not assemble separate camera URLs.
 
 ### Qualification and scoring
@@ -287,7 +293,10 @@ python scripts/validate_trajectory_video.py \
 ```
 
 It runs YOLO11n and YOLOv8n on CUDA over 120 mosaics, each containing nine panes
-at 384 × 288 pixels. Seven show pedestrians, the eighth is frozen, and the ninth
+at 640 × 360 pixels in a 1920 × 1080 frame by default. Use
+`--width 3840 --height 2160` for 4K or set another output size; the same dynamic
+grid calculates every pane. Source footage is fitted with black padding where
+necessary, preserving its proportions. Seven show pedestrians, the eighth is frozen, and the ninth
 shows people for only one frame. This is a synthetic camera wall assembled from
 [OpenCV's pedestrian sample](https://github.com/opencv/opencv/blob/master/samples/data/vtest.avi),
 not nine independent camera recordings. The script asserts that every moving

@@ -129,8 +129,9 @@ class CameraManager:
             if frame is None:
                 return None
             # On-demand resize only when frame is actually fetched by a consumer
-            if CAM_WIDTH and CAM_HEIGHT and (frame.shape[1] > CAM_WIDTH or frame.shape[0] > CAM_HEIGHT):
-                frame = cv2.resize(frame, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+            if CAM_WIDTH and CAM_HEIGHT:
+                if frame.shape[1] > CAM_WIDTH or frame.shape[0] > CAM_HEIGHT:
+                    frame = cv2.resize(frame, (CAM_WIDTH, CAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
             elif frame.shape[1] > 2560 or frame.shape[0] > 1440:
                 frame = cv2.resize(frame, (2560, 1440), interpolation=cv2.INTER_LINEAR)
             return frame

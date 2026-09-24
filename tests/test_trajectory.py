@@ -85,3 +85,16 @@ def test_nondivisible_grid_covers_every_pixel_once():
 def test_invalid_configuration(bad):
     with pytest.raises(ValueError):
         TrackingConfig(**bad)
+
+
+@pytest.mark.parametrize('width,height', [(1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)])
+def test_dynamic_widescreen_grid(width, height):
+    panes = list(pane_bounds((height, width, 3), config(rows=3, columns=3)))
+    assert len(panes) == 9
+    assert sum((x2 - x1) * (y2 - y1) for _, x1, y1, x2, y2 in panes) == width * height
+    for pane, x1, y1, x2, y2 in panes:
+        row, col = divmod(pane, 3)
+        assert (x1, x2) == (col * width // 3, (col + 1) * width // 3)
+        assert (y1, y2) == (row * height // 3, (row + 1) * height // 3)
+        assert abs((x2 - x1) - width / 3) < 1
+        assert abs((y2 - y1) - height / 3) < 1

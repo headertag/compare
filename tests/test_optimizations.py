@@ -44,3 +44,18 @@ def test_broadcaster_event_driven_notification():
     jpeg, new_id = broadcaster.get_jpeg_wait(last_seen_id=initial_id, timeout=0.1)
     assert jpeg is not None
     assert new_id == initial_id + 1
+
+
+@pytest.mark.parametrize('configured,expected', [((3840, 2160), (3840, 2160)),
+                                                ((1920, 1080), (1920, 1080)),
+                                                ((0, 0), (2560, 1440))])
+def test_camera_respects_explicit_widescreen_resolution(monkeypatch, configured, expected):
+    import queue
+    import camera
+    monkeypatch.setattr(camera, 'CAM_WIDTH', configured[0])
+    monkeypatch.setattr(camera, 'CAM_HEIGHT', configured[1])
+    manager = object.__new__(camera.CameraManager)
+    manager.frame_queue = queue.Queue()
+    manager.frame_queue.put(np.zeros((2160, 3840, 3), np.uint8))
+    result = manager.get_frame()
+    assert result.shape[:2] == (expected[1], expected[0])

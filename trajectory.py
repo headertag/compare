@@ -54,6 +54,7 @@ class TrackingConfig:
 
 
 def pane_bounds(shape, config):
+    """Partition actual frame dimensions; no fixed resolution or aspect ratio."""
     height, width = shape[:2]
     if config.rows > height or config.columns > width:
         raise ValueError('Tracking grid cannot have more panes than image pixels')

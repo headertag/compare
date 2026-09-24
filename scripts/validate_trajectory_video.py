@@ -14,12 +14,36 @@ import cv2
 import numpy as np
 import torch
 from model_loader import ModelPipeline
+from trajectory import TrackingConfig, pane_bounds
+
+
+def build_mosaic(frame, frozen, width, height, controls=False, first_frame=False):
+    """Fit sources into the same dynamic grid as tracking, without stretching."""
+    mosaic = np.zeros((height, width, 3), dtype=np.uint8)
+    for pane, x1, y1, x2, y2 in pane_bounds(mosaic.shape, TrackingConfig(rows=3, columns=3)):
+        source = frame if pane % 2 == 0 else cv2.flip(frame, 1)
+        if controls and pane == 7:
+            source = frozen
+        elif controls and pane == 8:
+            if not first_frame:
+                continue
+            source = frozen
+        h, w = source.shape[:2]
+        scale = min((x2 - x1) / w, (y2 - y1) / h)
+        target_w, target_h = max(1, round(w * scale)), max(1, round(h * scale))
+        tile = cv2.resize(source, (target_w, target_h))
+        left = x1 + (x2 - x1 - target_w) // 2
+        top = y1 + (y2 - y1 - target_h) // 2
+        mosaic[top:top + target_h, left:left + target_w] = tile
+    return mosaic
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--video', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--width', type=int, default=1920)
+    parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--frames', type=int, default=120)
     parser.add_argument('--stride', type=int, default=2)
     parser.add_argument('--models', nargs='+', default=['yolo11n.pt', 'yolov8n.pt'])
@@ -29,6 +53,8 @@ def main():
     args = parser.parse_args()
     if args.frames < 1 or args.stride < 1:
         parser.error('frames and stride must be positive')
+    if min(args.width, args.height) < 6 or args.width % 2 or args.height % 2:
+        parser.error('width and height must be even and at least 6 for MP4 output')
     if args.device == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     output = Path(args.output)
@@ -46,7 +72,7 @@ def main():
         raise RuntimeError(f'Cannot open {args.video}')
     fps = capture.get(cv2.CAP_PROP_FPS) or 25
     writer = cv2.VideoWriter(str(output / 'trajectory-3x3.mp4'), cv2.VideoWriter_fourcc(*'mp4v'),
-                             fps / args.stride, (1152, 864))
+                             fps / args.stride, (args.width, args.height))
     if not writer.isOpened():
         raise RuntimeError('Video output could not be opened')
     stats = {str(i): dict(observed=0, qualified=0, qualified_frames=0, boosted_score_max=0.) for i in range(9)}
@@ -58,14 +84,10 @@ def main():
             ok, frame = capture.read()
             if not ok:
                 break
-            tile = cv2.resize(frame, (384, 288))
             if frozen is None:
-                frozen = tile.copy()
-            tiles = [tile.copy() if i % 2 == 0 else cv2.flip(tile, 1) for i in range(9)]
-            if args.controls:
-                tiles[7] = frozen.copy()
-                tiles[8] = frozen.copy() if frames == 0 else np.zeros_like(tile)
-            mosaic = np.vstack([np.hstack(tiles[r:r + 3]) for r in (0, 3, 6)])
+                frozen = frame.copy()
+            mosaic = build_mosaic(frame, frozen, args.width, args.height,
+                                  controls=args.controls, first_frame=frames == 0)
             start = time.perf_counter()
             scores, boxes = pipeline.run_inference(mosaic, args.execution_mode)
             timings.append(time.perf_counter() - start)
@@ -91,7 +113,7 @@ def main():
     finally:
         capture.release()
         writer.release()
-    report = dict(frames=frames, device=str(pipeline.device),
+    report = dict(frames=frames, width=args.width, height=args.height, device=str(pipeline.device),
                   gpu=torch.cuda.get_device_name() if args.device == 'cuda' else None,
                   source=args.video, models=args.models, execution_mode=args.execution_mode,
                   tracking=config, controls=args.controls,
