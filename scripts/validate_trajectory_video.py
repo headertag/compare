@@ -104,7 +104,7 @@ def main():
             for (pane, _), tracker in pipeline.trackers.items():
                 entry = stats[str(pane)]
                 current = [t for t in tracker.tracks if t.missed == 0]
-                qualified = [t for t in current if t.movement_frames >= 3 and t.score > .15]
+                qualified = [t for t in current if t.score_eligible]
                 entry['observed'] += len(current)
                 entry['qualified'] += len(qualified)
                 if qualified:

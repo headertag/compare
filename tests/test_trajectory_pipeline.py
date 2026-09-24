@@ -26,7 +26,8 @@ class ScriptedDetector(BaseDetector):
 
 def make_pipeline(**options):
     cfg = dict(rows=3, columns=3, min_movement_frames=2, movement_pixels=1,
-               movement_box_fraction=0, score_multiplier=1.5)
+               movement_box_fraction=0, net_displacement_box_fraction=0,
+               require_visual_motion=False, score_multiplier=1.5)
     cfg.update(options)
     pipeline = ModelPipeline({}, torch.device('cpu'), tracking_config=cfg)
     pipeline.detectors = [ScriptedDetector()]
@@ -102,7 +103,7 @@ def test_low_confidence_candidates_can_extend_and_boost():
     assert scores == pytest.approx([.3])
     detector.x = 19
     detector.score = .12
-    assert pipeline.run_inference(frame)[0] == []  # Below model's scoring floor
+    assert pipeline.run_inference(frame)[0] == pytest.approx([.18])  # Boost crosses .15 floor
 
 
 def test_resize_and_idle_gap_reset_history():

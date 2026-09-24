@@ -7,7 +7,7 @@ import time
 import math
 from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
-from trajectory import TrackingConfig, ByteTracker, pane_bounds
+from trajectory import TrackingConfig, ByteTracker, VisualMotion, qualify_track, pane_bounds
 from PIL import Image
 from transformers import (
     DetrImageProcessor,
@@ -276,6 +276,7 @@ class ModelPipeline:
         self.models_config = models_config if models_config is not None else MODELS_CONFIG
         self.tracking_config = TrackingConfig(**(TRACKING_CONFIG if tracking_config is None else tracking_config))
         self.trackers = {}
+        self.visual_motion = VisualMotion(self.tracking_config)
         self.pane_scores = {}
         self._frame_shape = None
         self._last_frame_time = None
@@ -303,6 +304,7 @@ class ModelPipeline:
     def reset_tracking(self):
         """Call when changing input source or seeking a video."""
         self.trackers.clear()
+        self.visual_motion = VisualMotion(self.tracking_config)
         self.pane_scores = {}
         self._frame_shape = None
         self._last_frame_time = None
@@ -340,6 +342,8 @@ class ModelPipeline:
         else:
             outputs = [run_detector(d) for d in self.detectors]
         tracking_start = time.perf_counter()
+        if cfg.enabled and cfg.require_visual_motion:
+            self.visual_motion.update(img, panes)
         routed = {}
         if cfg.enabled:
             height, width = img.shape[:2]
@@ -376,8 +380,9 @@ class ModelPipeline:
                 tracker = self.trackers.setdefault((pane, detector.key), ByteTracker(cfg))
                 qualified_scores = []
                 for track in tracker.update(routed[detector.key][pane]):
-                    if (track.movement_frames >= cfg.min_movement_frames and
-                            track.score > detector.confidence_threshold):
+                    fraction = (self.visual_motion.fraction(pane, track.last_box, track.previous_box)
+                                if cfg.require_visual_motion else 0.0)
+                    if qualify_track(track, cfg, detector.confidence_threshold, fraction):
                         qualified_scores.append(track.score * detector.weight * cfg.score_multiplier)
                         global_box = track.last_box + np.array([x1, y1, x1, y1])
                         all_boxes.append((global_box.tolist(), detector.key))
@@ -412,7 +417,7 @@ class ModelPipeline:
                 for track in tracker.tracks:
                     if track.missed:
                         continue
-                    ready = track.movement_frames >= cfg.min_movement_frames
+                    ready = track.score_eligible
                     color = (0, 220, 0) if ready else (0, 180, 255)
                     points = []
                     for _, box in track.history:
@@ -422,7 +427,8 @@ class ModelPipeline:
                     if len(points) > 1:
                         cv2.polylines(crop, [np.array(points, np.int32)], False, color, 1)
                     x, y = map(int, track.last_box[:2])
-                    cv2.putText(crop, f"{model} #{track.id} motion {track.movement_frames}/{cfg.min_movement_frames}",
+                    label = 'QUALIFIED' if ready else 'candidate'
+                    cv2.putText(crop, f"{model} #{track.id} {label}",
                                 (x, max(30, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, .35, color, 1)
 
     def get_model_colors(self) -> dict[str, tuple]:

@@ -225,48 +225,73 @@ boundaries; the application does not assemble separate camera URLs.
 
 ### Qualification and scoring
 
-A frame counts toward movement only when an observed person's box center moves
-by **more than** both `movement_pixels` and `movement_box_fraction` times the
-previous box diagonal. `min_movement_frames: 3` requires three consecutive
-moving transitions (at least four observations). These are **processed frames**,
-not camera frames or seconds. A stationary frame or a missed detection resets
-the movement count. Kalman predictions alone never qualify a person or score.
-Lost identities remain available for `max_lost_frames`, but a recovered person
-must establish a fresh movement sequence. `reset_tracking()` clears history
-when changing sources or seeking a video; image-size changes and idle gaps
-longer than `reset_gap_seconds` also clear history automatically.
+A changing detection box is **not sufficient movement evidence**. Qualification
+uses a short window of observed centers (`movement_window_frames: 8`, expanded
+to at least `min_movement_frames` if necessary). It requires:
 
-Only currently observed, movement-qualified detections above that model's
-`confidence_threshold` enter scoring:
+- At least `min_movement_frames` measured, nonzero movement steps in that window.
+- Net displacement greater than `movement_pixels` and the configured box-relative
+  floors (`movement_box_fraction` and `net_displacement_box_fraction`, default 0.05).
+- Net displacement / total path length of at least `direction_consistency: 0.7`,
+  so back-and-forth detector jitter does not count as a trajectory.
+- Current image-change evidence and at least `min_movement_frames` observations
+  with image-change evidence in the window (`require_visual_motion: true`).
+
+The image check uses one shared grayscale frame difference, independent of the
+models. It queries the **same pixel coordinates** within the overlap of consecutive
+boxes, so resizing or shifting a box over an unchanged object cannot create
+visual evidence. Blur and `visual_change_threshold: 10` reduce noise; a robust
+per-pane brightness offset reduces uniform lighting changes. At least
+`visual_change_fraction: 0.02` of the overlap must change. This is a supporting
+image-change check, not optical flow or semantic proof that an object is a person.
+Moving foliage, shadows, screens, and camera movement remain potential confounders.
+
+**Migration:** `movement_pixels` and `movement_box_fraction` now describe net
+movement across the window, not a mandatory displacement on every frame. Slow
+people can accumulate evidence; a stationary observation cannot score. Missing
+observations still cannot score, and a recovered track starts a fresh motion
+sequence. Kalman predictions never qualify a person. Lost identities are retained
+for `max_lost_frames`. `reset_tracking()` clears history when changing sources or
+seeking a video; image-size changes and idle gaps longer than `reset_gap_seconds`
+also clear history automatically.
+
+The motion-verified confidence is boosted **before** checking the model's
+`confidence_threshold`; previously the raw confidence cutoff prevented the boost
+from rescuing weaker candidates. Only currently verified tracks can score:
 
 ```
-model vote = person confidence × model weight × tracking.score_multiplier
+boosted confidence = person confidence × tracking.score_multiplier
+accept if boosted confidence > model confidence_threshold
+model vote = boosted confidence × model weight
 pane score = sum of each model's strongest qualified vote in that pane
 alert score = highest pane score
 ```
 
 For example, confidence `0.35`, model weight `1.0`, and multiplier `1.5` yield
-`0.525` once the trajectory qualifies. The multiplier increases evidence weight;
+`0.525` once the trajectory qualifies, and can now cross a model cutoff of `0.5`. The multiplier increases evidence weight;
 it is not a calibrated probability. Crowd size does not multiply a model's vote,
 and different camera panes cannot combine votes to reach the alert threshold.
 Within a pane, scoring still aggregates model votes rather than attempting
 cross-model person re-identification.
 
-Lower the relevant models' `confidence_threshold` values (for example to `0.15`)
-to let qualified lower-confidence predictions score. `low_threshold` controls
+The boost can admit lower-confidence detections without changing the model's
+cutoff. You can also tune `confidence_threshold` (for example to `0.15`). `low_threshold` controls
 candidate collection *before* that scoring filter; set it at or below your
-lowest model scoring threshold. `high_threshold` controls the confidence needed
+lowest model scoring threshold divided by `score_multiplier`. `high_threshold` controls the confidence needed
 to establish/recover an identity; lower it too if persons never reach `0.4`.
 The existing `alerting.sensitivity_threshold` still applies to the boosted pane
 score. Tune these together on your camera footage; a trajectory does not guarantee
-that a moving detection is a person. Camera motion and box jitter can count as
-movement if they exceed the configured displacement thresholds.
+that a moving detection is a person. A frozen-video control alone does not
+measure false-positive rates on a live camera; validate with representative
+footage and labeled stationary false positives before judging effectiveness.
 
 Set **`min_movement_frames: 0`** to bypass the grid, tracking, histories, and
 multiplier entirely, restoring full-frame, first-person-per-model scoring.
 Existing configurations without a `tracking` section keep this behavior.
-Green histories show movement-qualified tracks; amber histories are still
-waiting for movement. Disable the overlay with `draw_history: false`.
+Green `QUALIFIED` histories are actually admitted to scoring. Amber `candidate`
+histories are unqualified raw model candidates, not confirmed motion or alerts.
+Previously green indicated box movement alone, even when the model score cutoff
+still excluded the track. Disable the overlay with `draw_history: false`.
 
 ### Reproducible offline video check
 

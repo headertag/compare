@@ -9,7 +9,7 @@ def det(x=10, score=.8, y=10):
 
 def config(**kwargs):
     return TrackingConfig(**dict(min_movement_frames=2, movement_pixels=1,
-                                  movement_box_fraction=0, **kwargs))
+                                  movement_box_fraction=0, net_displacement_box_fraction=0, **kwargs))
 
 
 def test_moving_then_stationary_and_gap():

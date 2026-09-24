@@ -92,10 +92,16 @@ tracking:
   columns: 3
   min_movement_frames: 0 # 0 completely bypasses tracking/grid/boost (legacy behavior)
   score_multiplier: 1.5 # Qualified model vote = confidence * model weight * this
-  movement_pixels: 2.0 # Minimum observed center displacement per processed frame
-  movement_box_fraction: 0.01 # Also require > this fraction of the box diagonal
+  movement_pixels: 2.0 # Minimum NET center displacement over the movement window
+  movement_box_fraction: 0.01 # Additional net-displacement floor relative to box diagonal
   low_threshold: 0.1 # Candidate floor BEFORE tracking; low scores can extend tracks
   high_threshold: 0.4 # Minimum confidence to start or recover a lost track
+  movement_window_frames: 8 # Allows slow motion to accumulate instead of requiring 2px every frame
+  net_displacement_box_fraction: 0.05 # Reject tiny wandering relative to object size
+  direction_consistency: 0.7 # Net displacement / total path length; rejects back-and-forth box jitter
+  require_visual_motion: true # Require image changes, not just changing box coordinates
+  visual_change_threshold: 10.0 # Blurred grayscale difference on 0..255 scale
+  visual_change_fraction: 0.02 # Minimum fraction of changed pixels inside consecutive boxes' overlap
   match_iou: 0.2 # Minimum IoU for Kalman prediction / high-score Hungarian matching
   low_match_iou: 0.3 # Minimum IoU in the second (low-score) association stage
   max_lost_frames: 15 # Retain an unmatched identity this many processed frames
