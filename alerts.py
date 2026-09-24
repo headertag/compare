@@ -73,11 +73,12 @@ class AlertMediaSender:
                         try:
                             with video.open('rb') as clip:
                                 self.bot.sendVideo(chat_id, clip, caption=caption, supports_streaming=True)
+                            print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.', flush=True)
                             continue
                         except Exception as exc:
                             print(f'Video upload failed for {chat_id}; using snapshot: {exc}')
                     image = io.BytesIO(frames[-1].jpeg)
                     image.name = 'person-alert.jpg'
-                    self.bot.sendPhoto(chat_id, image, caption='Person alert — enlarged detection snapshot')
+                    self.bot.sendPhoto(chat_id, image)
                 except Exception as exc:
                     print(f'Failed to send alert to {chat_id}: {exc}')

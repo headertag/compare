@@ -12,8 +12,8 @@ from trajectory import iou, pane_bounds, TrackingConfig
 @dataclass(frozen=True)
 class MediaConfig:
     zoom_enabled: bool = True
-    zoom_factor: float = 3.0
-    zoom_max_pane_fraction: float = 0.65
+    zoom_factor: float = 6.0
+    zoom_max_pane_fraction: float = 1.0
     max_zoom_per_pane: int = 0
     video_enabled: bool = True
     history_frames: int = 60

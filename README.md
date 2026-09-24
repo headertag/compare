@@ -357,14 +357,18 @@ The live JPEG snapshot/stream remains live JPEG, not a video file.
 ```yaml
 alert_media:
   zoom_enabled: true
-  zoom_factor: 3.0
-  zoom_max_pane_fraction: 0.65
+  zoom_factor: 6.0
+  zoom_max_pane_fraction: 1.0
   max_zoom_per_pane: 0
   video_enabled: true
   history_frames: 60
   history_max_mb: 64
   playback_fps: 5
 ```
+
+The default zoom is 6× (twice the previous 3× width and height), capped by the
+space available inside the source camera pane. Existing explicit settings
+override defaults; update `zoom_factor` and `zoom_max_pane_fraction` as above.
 
 These defaults apply without adding the section. If `alert_media.history_frames`
 is omitted, the main application uses `tracking.history_frames` (normally 60).

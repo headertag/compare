@@ -112,8 +112,8 @@ tracking:
 # Display-only zooms; original model thresholds and trajectory scoring are unchanged.
 alert_media:
   zoom_enabled: true
-  zoom_factor: 3.0
-  zoom_max_pane_fraction: 0.65 # Insets remain inside their original camera pane
+  zoom_factor: 6.0
+  zoom_max_pane_fraction: 1.0 # Insets remain inside their original camera pane
   max_zoom_per_pane: 0 # 0 = all distinct accepted detections; set e.g. 3 to limit clutter
   video_enabled: true # Send an H.264 MP4 instead of a still photo when history exists
   history_frames: 60 # Last processed frames, including the alert-triggering frame

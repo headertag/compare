@@ -102,6 +102,7 @@ def test_video_encoding_failure_falls_back_to_independent_photo_streams():
         sender.send_snapshot(frames)
     assert sent == [(1, frames[-1].jpeg), (2, frames[-1].jpeg)]
     bot.sendVideo.assert_not_called()
+    assert all("caption" not in call.kwargs for call in bot.sendPhoto.call_args_list)
 
 
 def test_video_upload_failure_falls_back_only_for_failed_recipient(tmp_path):
@@ -151,3 +152,12 @@ def test_preview_encoded_jpeg_is_the_same_one_saved_and_buffered(tmp_path):
     encoded = broadcaster.update_frame(display)
     assert encoded == broadcaster.get_jpeg() == (tmp_path / 'preview.jpg').read_bytes()
     assert not np.array_equal(cv2.imdecode(np.frombuffer(encoded, np.uint8), 1), raw)
+
+
+def test_default_zoom_doubles_previous_dimensions_when_pane_has_room():
+    raw = np.zeros((1080, 1920, 3), np.uint8)
+    box = ([200, 200, 220, 240], 'person')
+    original_resize = cv2.resize
+    with patch('alert_media.cv2.resize', wraps=original_resize) as resize:
+        draw_person_zoom(raw, [box], MediaConfig(), TrackingConfig(rows=3, columns=3))
+    assert resize.call_args.args[1] == (120, 240)
