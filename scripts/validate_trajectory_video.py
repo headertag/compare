@@ -123,7 +123,8 @@ def main():
             raw = mosaic.copy() if args.zoom else None
             pipeline.draw_trajectories(mosaic)
             if args.zoom:
-                mosaic = draw_person_zoom(raw, pipeline.preview_boxes, media, pipeline.tracking_config, canvas=mosaic)
+                mosaic = draw_person_zoom(raw, pipeline.preview_boxes, media, pipeline.tracking_config, canvas=mosaic,
+                                          model_colors=pipeline.get_model_colors())
                 ok, encoded = cv2.imencode('.jpg', mosaic, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if ok:
                     alert_history.append(encoded.tobytes(), frames * args.stride / fps, mosaic.shape[:2],

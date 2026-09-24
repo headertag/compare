@@ -49,6 +49,7 @@ def test_nine_panes_boost_once_per_model_and_keep_coordinates_local(mode):
             assert scores == [] and boxes == []
     assert scores == pytest.approx([1.2, .6])
     assert len(boxes) == 18
+    assert all(confidence == pytest.approx(.8) for _, _, confidence in pipeline.preview_boxes)
     assert all(d.calls == 3 and d.last_shape == frame.shape for d in pipeline.detectors)
     assert len(pipeline.trackers) == 18
     assert boxes[-1][0] == [216, 210, 246, 260]

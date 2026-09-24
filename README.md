@@ -346,6 +346,10 @@ Already-large boxes are not shrunk to make an inset. Inference and all existing
 confidence, trajectory, scoring, and alert interval rules remain unchanged:
 insets use raw pixels and are drawn on a separate display copy. A magnifier is a
 viewing aid, not a declaration that a candidate has qualified for an alert.
+Each inset shows large model names at bottom left and raw confidence percentages
+at bottom right, using each model’s configured BGR color. Overlapping detections
+share one zoom with one label row per model; percentages exclude ensemble weights
+and trajectory boosts.
 
 Telegram alerts now send a playable H.264 MP4 containing the **person-containing frames from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms

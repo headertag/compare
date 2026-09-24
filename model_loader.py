@@ -346,7 +346,7 @@ class ModelPipeline:
         else:
             outputs = [run_detector(d) for d in self.detectors]
         self.preview_boxes = [
-            (list(box), model) for detector, scores, boxes in outputs
+            (list(box), model, float(score / detector.weight)) for detector, scores, boxes in outputs
             for score, (box, model) in zip(scores, boxes)
             if detector.weight > 0 and score / detector.weight > detector.confidence_threshold
         ]

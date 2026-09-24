@@ -62,7 +62,7 @@ def main(frame_callback=None):
             pipeline.draw_trajectories(img)
             img = draw_person_zoom(raw, pipeline.preview_boxes, media,
                                    pipeline.tracking_config if pipeline.tracking_config.enabled else None,
-                                   canvas=img)
+                                   canvas=img, model_colors=pipeline.get_model_colors())
 
             if frame_callback:
                 frame_callback(img)

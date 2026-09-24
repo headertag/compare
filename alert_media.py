@@ -36,7 +36,7 @@ class MediaConfig:
             raise ValueError('Invalid alert_media zoom factor, pane fraction or playback fps')
 
 
-def draw_person_zoom(raw, boxes, config, grid=None, canvas=None):
+def draw_person_zoom(raw, boxes, config, grid=None, canvas=None, model_colors=None):
     """Magnify accepted detections from raw pixels, never from another inset.
 
 Deduplicate overlapping model boxes and keep the magnifiers in their source
@@ -48,7 +48,9 @@ pane. Insets are display cues, not additional detections or alert evidence.
     panes = list(pane_bounds(raw.shape, grid or TrackingConfig()))
     grouped = {pane: [] for pane, *_ in panes}
     height, width = raw.shape[:2]
-    for box, model in boxes:
+    for detection in boxes:
+        box, model = detection[:2]
+        confidence = detection[2] if len(detection) > 2 else None
         box = np.asarray(box, float)
         if box.shape != (4,) or not np.isfinite(box).all():
             continue
@@ -61,14 +63,18 @@ pane. Insets are display cues, not additional detections or alert evidence.
         for pane, px1, py1, px2, py2 in panes:
             if px1 <= cx < px2 and py1 <= cy < py2:
                 clipped = [max(x1, px1), max(y1, py1), min(x2, px2), min(y2, py2)]
-                if not any(iou(clipped, previous) >= .5 for previous in grouped[pane]):
-                    grouped[pane].append(clipped)
+                match = next((entry for entry in grouped[pane] if iou(clipped, entry[0]) >= .5), None)
+                if match is None:
+                    grouped[pane].append((clipped, {model: confidence}))
+                elif model not in match[1] or (confidence is not None and
+                        (match[1][model] is None or confidence > match[1][model])):
+                    match[1][model] = confidence
                 break
     for pane, px1, py1, px2, py2 in panes:
         # The live broadcaster uses a 36px status banner across the top row.
         safe_top = min(py2, 36) if py1 == 0 else py1
         placed = []
-        for box in grouped[pane][:config.max_zoom_per_pane or None]:
+        for box, evidence in grouped[pane][:config.max_zoom_per_pane or None]:
             x1, y1, x2, y2 = map(int, box)
             crop = raw[y1:y2, x1:x2]
             if not crop.size:
@@ -97,9 +103,37 @@ pane. Insets are display cues, not additional detections or alert evidence.
             pane_img = result[py1:py2, px1:px2]
             cv2.rectangle(pane_img, (left-px1, top-py1), (right-px1-1, bottom-py1-1), color, 2)
             cv2.rectangle(pane_img, (x1-px1, y1-py1), (x2-px1-1, y2-py1-1), color, 1)
-            cv2.putText(pane_img, f'{factor:.1f}x person candidate', (left-px1+3, top-py1+14),
-                        cv2.FONT_HERSHEY_SIMPLEX, .38, color, 1)
+            _draw_zoom_labels(result[top:bottom, left:right], evidence, model_colors or {})
     return result
+
+
+def _draw_zoom_labels(inset, evidence, colors):
+    """One color-matched row per model; percentages are raw model confidence."""
+    h, w = inset.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    pad = max(3, min(8, w // 30))
+    rows = [(str(model), '' if confidence is None else f'{confidence * 100:.0f}%',
+             tuple(colors.get(model, (255, 210, 60))))
+            for model, confidence in evidence.items()]
+    if not rows:
+        return
+    # Fit the whole name and percentage without overlap, using a bold large font.
+    thickness = 2 if w >= 120 else 1
+    scale = min(1.5, max(.7, w / 320))
+    for name, percentage, _ in rows:
+        text_width = sum(cv2.getTextSize(text, font, 1, thickness)[0][0]
+                         for text in (name, percentage))
+        scale = min(scale, max(.05, (w - 3 * pad - 2 * thickness) / max(1, text_width)))
+    scale = min(scale, max(.05, (h / len(rows) - 2 * pad - thickness) / 32))
+    (_, text_h), baseline = cv2.getTextSize('Ag', font, scale, thickness)
+    row_h = text_h + baseline + 2 * pad
+    band_h = min(h, row_h * len(rows))
+    inset[h-band_h:] = (inset[h-band_h:].astype(np.float32) * .2).astype(np.uint8)
+    for index, (name, percentage, color) in enumerate(rows):
+        y = h - (len(rows) - 1 - index) * row_h - pad - baseline
+        right_width = cv2.getTextSize(percentage, font, scale, thickness)[0][0]
+        for text, x in ((name, pad), (percentage, w - pad - right_width)):
+            cv2.putText(inset, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
 
 
 @dataclass(frozen=True)

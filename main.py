@@ -62,7 +62,8 @@ def main(frame_callback=None):
             display = img.copy()
             pipeline.draw_trajectories(display)
             grid = pipeline.tracking_config if pipeline.tracking_config.enabled else None
-            display = draw_person_zoom(img, pipeline.preview_boxes, media, grid, canvas=display)
+            display = draw_person_zoom(img, pipeline.preview_boxes, media, grid, canvas=display,
+                                       model_colors=pipeline.get_model_colors())
             jpeg = broadcaster.update_frame(
                 display, results=results, threshold=ALERT_SENSITIVITY_THRESHOLD,
                 multi_box=multi_box, model_colors=pipeline.get_model_colors())

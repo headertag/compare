@@ -29,7 +29,7 @@ def test_zoom_uses_raw_pixels_without_mutating_inference_input():
 def test_cross_model_zoom_duplicates_are_suppressed():
     raw = np.full((180, 240, 3), 100, np.uint8)
     a = ([90, 80, 100, 100], 'a')
-    b = ([90, 80, 100, 100], 'b')
+    b = ([90, 80, 100, 100], 'a')
     assert np.array_equal(draw_person_zoom(raw, [a], MediaConfig()),
                           draw_person_zoom(raw, [a, b], MediaConfig()))
 
@@ -191,3 +191,20 @@ def test_single_person_frame_sends_one_fps_video(tmp_path):
     sender.send_snapshot((HistoryFrame(jpeg(), 0),))
     assert received == [(1, 1), (1, 1)]
     bot.sendPhoto.assert_not_called()
+
+
+def test_zoom_labels_keep_each_models_raw_confidence_and_color():
+    raw = np.full((1080, 1920, 3), 100, np.uint8)
+    detections = [([200, 200, 250, 280], 'frcnn', .87),
+                  ([200, 200, 250, 280], 'yolo', .63)]
+    colors = {'frcnn': (0, 0, 255), 'yolo': (50, 205, 50)}
+    with patch('alert_media.cv2.putText', wraps=cv2.putText) as text, \
+         patch('alert_media.cv2.resize', wraps=cv2.resize) as resize:
+        draw_person_zoom(raw, detections, MediaConfig(), model_colors=colors)
+    assert resize.call_count == 1
+    calls = {call.args[1]: call.args for call in text.call_args_list}
+    for model, percentage in [('frcnn', '87%'), ('yolo', '63%')]:
+        assert calls[model][5] == calls[percentage][5] == colors[model]
+        assert calls[model][2][0] < calls[percentage][2][0]
+        assert calls[model][2][1] == calls[percentage][2][1]
+        assert calls[model][4] >= .7
