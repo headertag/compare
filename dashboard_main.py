@@ -11,9 +11,11 @@ from config import (
     CAM_HEIGHT,
     EXECUTION_MODE,
     INTER_FRAME_DELAY,
+    ALERT_MEDIA_CONFIG,
 )
 from camera import get_camera_manager
 from model_loader import get_model_pipeline
+from alert_media import MediaConfig, draw_person_zoom
 
 def main(frame_callback=None):
     """
@@ -25,6 +27,7 @@ def main(frame_callback=None):
 
     # Get dynamic model pipeline
     pipeline = get_model_pipeline()
+    media = MediaConfig(**ALERT_MEDIA_CONFIG)
 
     # Give camera time to warm up
     time.sleep(2)
@@ -42,6 +45,8 @@ def main(frame_callback=None):
             # Run inference dynamically across all enabled models in pipeline
             results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
 
+            raw = img
+            img = img.copy()
             alert_condition = sum(results) >= ALERT_SENSITIVITY_THRESHOLD
             model_colors = pipeline.get_model_colors()
 
@@ -55,6 +60,9 @@ def main(frame_callback=None):
                     cv2.putText(img, model_name, (endX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             pipeline.draw_trajectories(img)
+            img = draw_person_zoom(raw, pipeline.preview_boxes, media,
+                                   pipeline.tracking_config if pipeline.tracking_config.enabled else None,
+                                   canvas=img)
 
             if frame_callback:
                 frame_callback(img)

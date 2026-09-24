@@ -16,3 +16,4 @@ ultralytics
 pandas
 seaborn
 scipy
+imageio-ffmpeg>=0.5

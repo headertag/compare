@@ -113,6 +113,8 @@ class PreviewBroadcaster:
                 os.replace(tmp_shm, self.shm_path)
             except Exception:
                 pass
+            return jpeg_bytes
+        return None
 
     def get_jpeg(self):
         with self.lock:

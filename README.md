@@ -333,3 +333,71 @@ Full-frame detector resizing is unchanged, so small people in a camera mosaic
 may need an appropriate detector input resolution or model. Unit tests use scripted detections
 and mocked backends without model downloads (`python -m pytest`). Model loading
 is lazy; legacy global model attributes initialize on first access.
+
+## Enlarged person previews and Telegram history clips
+
+![Enlarged person insets and 60-frame alert history](docs/assets/person-zoom.gif)
+
+Detected people above each model's **original confidence threshold** receive a
+3× magnified inset near their source box, on both the live `preview.jpg` stream
+and Telegram media. Insets stay inside their camera pane and preserve aspect
+ratio. Overlapping boxes from different models are deduplicated for display.
+Already-large boxes are not shrunk to make an inset. Inference and all existing
+confidence, trajectory, scoring, and alert interval rules remain unchanged:
+insets use raw pixels and are drawn on a separate display copy. A magnifier is a
+viewing aid, not a declaration that a candidate has qualified for an alert.
+
+Telegram alerts now send a playable H.264 MP4 containing the **last 60 processed
+preview frames**, including the frame that triggered the alert, with their zooms
+and trajectory overlays. This is retrospective; the application does not wait
+for another 60 future frames before sending. The old trajectory history held
+only box coordinates; a new JPEG ring buffer retains the actual displayed frames.
+The live JPEG snapshot/stream remains live JPEG, not a video file.
+
+```yaml
+alert_media:
+  zoom_enabled: true
+  zoom_factor: 3.0
+  zoom_max_pane_fraction: 0.65
+  max_zoom_per_pane: 0
+  video_enabled: true
+  history_frames: 60
+  history_max_mb: 64
+  playback_fps: 5
+```
+
+These defaults apply without adding the section. If `alert_media.history_frames`
+is omitted, the main application uses `tracking.history_frames` (normally 60).
+`max_zoom_per_pane: 0` shows all distinct accepted boxes; set a positive number to
+limit clutter in crowded views. With tracking disabled, the legacy first-person
+per model detection behavior is preserved. Setting `video_enabled: false` sends
+a magnified still instead. `zoom_enabled: false` disables only magnification.
+
+A full buffer plays for 12 seconds at the default 5 FPS. These are **processed
+frames**, so 60 observations may cover substantially more than 12 seconds of
+real time on a slow inference setup; the clip caption states the observation
+span. Startup, camera/processing interruptions, resolution changes, or the memory
+cap can result in fewer frames. The JPEG buffer is capped at 64 MiB by default;
+oldest frames are evicted when either the frame or byte limit is exceeded.
+Encoding and upload use one background worker with one queued snapshot, avoiding
+unbounded worker growth and shared `ALERT.jpg` races. Queue snapshots can retain
+up to two additional buffers while alerts are being encoded or uploaded.
+
+Install the updated `requirements.txt` for `imageio-ffmpeg`. Video encoding uses
+two CPU threads and H.264 with a streaming header; it does not rerun inference.
+On platforms where the package has no bundled FFmpeg (for example some ARM
+systems), install a system FFmpeg with `libx264`, or set `IMAGEIO_FFMPEG_EXE` to
+that executable. If encoding or Telegram video upload fails, the sender falls
+back to the latest magnified still for that recipient. No new Telegram credentials
+or permissions are needed; the existing configured chats receive the alerts.
+
+To inspect the media locally without sending any Telegram messages:
+
+```bash
+python scripts/validate_trajectory_video.py \
+  --video /tmp/compare-pedestrians.avi --output /tmp/compare-zoom \
+  --controls --execution-mode parallel --zoom
+```
+
+The output includes `zoom-preview.jpg` and a 60-frame `alert-history.mp4` in
+addition to the validation measurements and annotated full video.

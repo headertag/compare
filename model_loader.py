@@ -276,6 +276,8 @@ class ModelPipeline:
         self.models_config = models_config if models_config is not None else MODELS_CONFIG
         self.tracking_config = TrackingConfig(**(TRACKING_CONFIG if tracking_config is None else tracking_config))
         self.trackers = {}
+        self.preview_boxes = []
+        self.stream_generation = 0
         self.visual_motion = VisualMotion(self.tracking_config)
         self.pane_scores = {}
         self._frame_shape = None
@@ -304,6 +306,8 @@ class ModelPipeline:
     def reset_tracking(self):
         """Call when changing input source or seeking a video."""
         self.trackers.clear()
+        self.preview_boxes = []
+        self.stream_generation += 1
         self.visual_motion = VisualMotion(self.tracking_config)
         self.pane_scores = {}
         self._frame_shape = None
@@ -341,6 +345,11 @@ class ModelPipeline:
                 outputs = list(executor.map(run_detector, self.detectors))
         else:
             outputs = [run_detector(d) for d in self.detectors]
+        self.preview_boxes = [
+            (list(box), model) for detector, scores, boxes in outputs
+            for score, (box, model) in zip(scores, boxes)
+            if detector.weight > 0 and score / detector.weight > detector.confidence_threshold
+        ]
         tracking_start = time.perf_counter()
         if cfg.enabled and cfg.require_visual_motion:
             self.visual_motion.update(img, panes)

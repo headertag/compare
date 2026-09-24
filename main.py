@@ -1,6 +1,4 @@
-import cv2
 import time
-import threading
 import random
 from datetime import datetime
 import torch
@@ -15,9 +13,11 @@ from config import (
     CAM_HEIGHT,
     EXECUTION_MODE,
     INTER_FRAME_DELAY,
+    ALERT_MEDIA_CONFIG,
 )
 from camera import get_camera_manager
-from alerts import initialize_bot, send_alert
+from alerts import initialize_bot, AlertMediaSender
+from alert_media import MediaConfig, AlertHistory, draw_person_zoom
 from streamer import start_preview_server, get_broadcaster
 from model_loader import get_model_pipeline
 
@@ -36,7 +36,10 @@ def main(frame_callback=None):
     # Get dynamic model pipeline
     pipeline = get_model_pipeline()
 
+    media = MediaConfig(**{"history_frames": pipeline.tracking_config.history_frames, **ALERT_MEDIA_CONFIG})
+    history = AlertHistory(media)
     bot = initialize_bot()
+    sender = AlertMediaSender(bot, media)
     last_alert = 0
 
     # Give camera time to warm up
@@ -55,42 +58,29 @@ def main(frame_callback=None):
             # Run inference dynamically across all enabled models in pipeline
             results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
 
+            # Overlay copies only: raw pixels remain untouched for the next inference.
+            display = img.copy()
+            pipeline.draw_trajectories(display)
+            grid = pipeline.tracking_config if pipeline.tracking_config.enabled else None
+            display = draw_person_zoom(img, pipeline.preview_boxes, media, grid, canvas=display)
+            jpeg = broadcaster.update_frame(
+                display, results=results, threshold=ALERT_SENSITIVITY_THRESHOLD,
+                multi_box=multi_box, model_colors=pipeline.get_model_colors())
+            history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]))
+
             if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
                 current_epoch = datetime.now().timestamp()
                 time_delta = current_epoch - last_alert
                 if time_delta > MIN_ALERT_INTERVAL:
                     if time_delta / MIN_ALERT_INTERVAL < ALERT_COOLDOWN_THRESHOLD:
                         time.sleep(ALERT_COOLDOWN)
-                    else:
-                        print(f"Alert triggered. Score: {sum(results)}")
+                    elif jpeg is not None and sender.submit(history.snapshot()):
+                        print(f"Alert queued. Score: {sum(results)}")
                         last_alert = current_epoch
-                        if multi_box:
-                            for i, (box_coords, model_name) in enumerate(multi_box[:3]):
-                                startX, startY, endX, endY = [int(p) for p in box_coords]
-                                cv2.rectangle(
-                                    img, (startX, startY), (endX, endY), (25 * i, 255, 25 * i), 2
-                                )
-                        cv2.imwrite("ALERT.jpg", img)
-                        alert_thread = threading.Thread(target=send_alert, args=(bot,))
-                        alert_thread.daemon = True  # Allow exit without waiting
-                        alert_thread.start()
-
-                        # Scramble the seed to prevent sequential bad predictions
                         torch.manual_seed(random.randint(1, 3000000))
 
-            pipeline.draw_trajectories(img)
-
-            # Broadcast latest frame with bounding boxes and detection metrics to HTTP preview
-            broadcaster.update_frame(
-                img,
-                results=results,
-                threshold=ALERT_SENSITIVITY_THRESHOLD,
-                multi_box=multi_box,
-                model_colors=pipeline.get_model_colors(),
-            )
-
             if frame_callback:
-                frame_callback(img)
+                frame_callback(display)
 
             # Thermal yield delay between frames to prevent continuous 100% duty cycle heat saturation
             if INTER_FRAME_DELAY > 0:

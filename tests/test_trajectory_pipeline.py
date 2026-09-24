@@ -246,3 +246,13 @@ def test_below_original_threshold_cannot_extend_qualified_history():
         assert len(tracker.tracks[0].history) == 3
         assert tracker.tracks[0].missed == 3
         assert not tracker.tracks[0].score_eligible
+
+
+def test_preview_candidates_obey_original_confidence_without_requiring_trajectory():
+    pipeline, frame = make_pipeline()
+    scores, _ = pipeline.run_inference(frame)
+    assert scores == []  # Still warming up
+    assert len(pipeline.preview_boxes) == 9  # Accepted confidence may be magnified
+    pipeline.detectors[0].score = .1
+    pipeline.run_inference(frame)
+    assert pipeline.preview_boxes == []

@@ -15,6 +15,7 @@ import numpy as np
 import torch
 from model_loader import ModelPipeline
 from trajectory import TrackingConfig, pane_bounds
+from alert_media import MediaConfig, AlertHistory, draw_person_zoom, encode_alert_video
 
 
 def build_mosaic(frame, frozen, width, height, controls=False, first_frame=False):
@@ -50,6 +51,7 @@ def main():
     parser.add_argument('--execution-mode', choices=['sequential', 'parallel'], default='sequential')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--controls', action='store_true')
+    parser.add_argument('--zoom', action='store_true', help='Render magnifiers and export a 60-frame Telegram-style clip')
     args = parser.parse_args()
     if args.frames < 1 or args.stride < 1:
         parser.error('frames and stride must be positive')
@@ -89,6 +91,8 @@ def main():
     stats = {str(i): dict(observed=0, qualified=0, qualified_frames=0, boosted_score_max=0.) for i in range(9)}
     frames = 0
     frozen = None
+    media = MediaConfig()
+    alert_history = AlertHistory(media)
     timings = []
     stage_timings = []
     try:
@@ -116,7 +120,13 @@ def main():
                 entry['boosted_score_max'] = max(entry['boosted_score_max'], pipeline.pane_scores[pane])
             for pane in qualified_panes:
                 stats[str(pane)]['qualified_frames'] += 1
+            raw = mosaic.copy() if args.zoom else None
             pipeline.draw_trajectories(mosaic)
+            if args.zoom:
+                mosaic = draw_person_zoom(raw, pipeline.preview_boxes, media, pipeline.tracking_config, canvas=mosaic)
+                ok, encoded = cv2.imencode('.jpg', mosaic, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                if ok:
+                    alert_history.append(encoded.tobytes(), frames * args.stride / fps, mosaic.shape[:2])
             writer.write(mosaic)
             frames += 1
             if frames % 30 == 0:
@@ -126,10 +136,14 @@ def main():
     finally:
         capture.release()
         writer.release()
+    if args.zoom and alert_history.snapshot():
+        snapshot = alert_history.snapshot()
+        encode_alert_video(snapshot, output / 'alert-history.mp4', media.playback_fps)
+        (output / 'zoom-preview.jpg').write_bytes(snapshot[-1].jpeg)
     report = dict(frames=frames, width=args.width, height=args.height, device=str(pipeline.device),
                   gpu=torch.cuda.get_device_name() if args.device == 'cuda' else None,
                   source=args.video, models=args.models, execution_mode=args.execution_mode,
-                  tracking=config, controls=args.controls, inference_calls=inference_calls,
+                  tracking=config, controls=args.controls, zoom=args.zoom, alert_history_frames=len(alert_history.snapshot()), inference_calls=inference_calls,
                   confidence_thresholds={d.key: d.confidence_threshold for d in pipeline.detectors},
                   subthreshold_detections=subthreshold_detections,
                   steady_inference_ms=float(np.mean([t['inference_seconds'] for t in stage_timings[1:]])) * 1000 if len(stage_timings) > 1 else None,

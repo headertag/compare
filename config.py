@@ -46,3 +46,6 @@ REMOVE_BACKGROUND = config["dashboard"]["remove_background"]
 
 # Optional: omitted settings preserve the legacy, non-temporal pipeline.
 TRACKING_CONFIG = config.get("tracking", {})
+
+# Display magnifiers and retrospective Telegram video clips.
+ALERT_MEDIA_CONFIG = config.get("alert_media", {})
