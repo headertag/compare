@@ -78,6 +78,8 @@ def main(frame_callback=None):
                         # Scramble the seed to prevent sequential bad predictions
                         torch.manual_seed(random.randint(1, 3000000))
 
+            pipeline.draw_trajectories(img)
+
             # Broadcast latest frame with bounding boxes and detection metrics to HTTP preview
             broadcaster.update_frame(
                 img,

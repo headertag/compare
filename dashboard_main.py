@@ -54,6 +54,8 @@ def main(frame_callback=None):
                     )
                     cv2.putText(img, model_name, (endX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
+            pipeline.draw_trajectories(img)
+
             if frame_callback:
                 frame_callback(img)
 

@@ -191,3 +191,111 @@ apt remove python3-blinker
 pip install --index-url https://pypi.org/simple "numpy<2.0" --force-reinstall
 pip install --index-url https://pypi.org/simple transformers imutils opencv-python Pillow imutils telepot scikit-image imagehash timm ultralytics pandas seaborn "numpy<2.0" flask pytest
 ```
+
+## Trajectory tracking for camera grids
+
+Trajectory tracking adds movement evidence to each model's person prediction.
+It is opt-in, and works in both the main alerting application and dashboard.
+For a 3 × 3 camera wall, add this to `config.yaml` (the full set of options is
+in `config.yaml.example`):
+
+```yaml
+tracking:
+  rows: 3
+  columns: 3
+  min_movement_frames: 3
+  score_multiplier: 1.5
+  movement_pixels: 2.0
+  movement_box_fraction: 0.01
+  low_threshold: 0.1
+  high_threshold: 0.4
+  history_frames: 60
+```
+
+Each enabled model runs on each equally sized pane, returning all person
+candidates. Each **pane/model pair** owns an independent ByteTrack tracker:
+constant-velocity Kalman prediction, IoU-gated Hungarian matching of high-score
+candidates, then matching of low-score candidates to remaining active tracks.
+Low-score candidates extend existing tracks but cannot start or revive them.
+This follows the two-stage association approach described by
+[ByteTrack](https://github.com/ifzhang/ByteTrack); the implementation here uses
+SciPy Hungarian assignment and a center/width/height Kalman state.
+
+Coordinates and the bounded history of observed bounding boxes stay local to
+each pane. Camera boundaries never share identities or movement evidence.
+Models have separate histories so ensemble agreement within one frame cannot
+masquerade as multiple trajectory frames. Panes cover the whole input image;
+when dimensions are not divisible by the grid size, pane dimensions differ by
+at most one pixel. The input must already be a camera mosaic with matching
+boundaries; the application does not assemble separate camera URLs.
+
+### Qualification and scoring
+
+A frame counts toward movement only when an observed person's box center moves
+by **more than** both `movement_pixels` and `movement_box_fraction` times the
+previous box diagonal. `min_movement_frames: 3` requires three consecutive
+moving transitions (at least four observations). These are **processed frames**,
+not camera frames or seconds. A stationary frame or a missed detection resets
+the movement count. Kalman predictions alone never qualify a person or score.
+Lost identities remain available for `max_lost_frames`, but a recovered person
+must establish a fresh movement sequence. `reset_tracking()` clears history
+when changing sources or seeking a video; image-size changes and idle gaps
+longer than `reset_gap_seconds` also clear history automatically.
+
+Only currently observed, movement-qualified detections above that model's
+`confidence_threshold` enter scoring:
+
+```
+model vote = person confidence × model weight × tracking.score_multiplier
+pane score = sum of each model's strongest qualified vote in that pane
+alert score = highest pane score
+```
+
+For example, confidence `0.35`, model weight `1.0`, and multiplier `1.5` yield
+`0.525` once the trajectory qualifies. The multiplier increases evidence weight;
+it is not a calibrated probability. Crowd size does not multiply a model's vote,
+and different camera panes cannot combine votes to reach the alert threshold.
+Within a pane, scoring still aggregates model votes rather than attempting
+cross-model person re-identification.
+
+Lower the relevant models' `confidence_threshold` values (for example to `0.15`)
+to let qualified lower-confidence predictions score. `low_threshold` controls
+candidate collection *before* that scoring filter; set it at or below your
+lowest model scoring threshold. `high_threshold` controls the confidence needed
+to establish/recover an identity; lower it too if persons never reach `0.4`.
+The existing `alerting.sensitivity_threshold` still applies to the boosted pane
+score. Tune these together on your camera footage; a trajectory does not guarantee
+that a moving detection is a person. Camera motion and box jitter can count as
+movement if they exceed the configured displacement thresholds.
+
+Set **`min_movement_frames: 0`** to bypass the grid, tracking, histories, and
+multiplier entirely, restoring full-frame, first-person-per-model scoring.
+Existing configurations without a `tracking` section keep this behavior.
+Green histories show movement-qualified tracks; amber histories are still
+waiting for movement. Disable the overlay with `draw_history: false`.
+
+### Reproducible offline video check
+
+This command reads a video sequentially without the live camera frame-dropping
+queue. It does not initialize Telegram or send any alerts:
+
+```bash
+curl -L https://raw.githubusercontent.com/opencv/opencv/master/samples/data/vtest.avi -o /tmp/compare-pedestrians.avi
+python scripts/validate_trajectory_video.py \
+  --video /tmp/compare-pedestrians.avi --output /tmp/compare-validation \
+  --controls --execution-mode parallel
+```
+
+It runs YOLO11n and YOLOv8n on CUDA over 120 mosaics, each containing nine panes
+at 384 × 288 pixels. Seven show pedestrians, the eighth is frozen, and the ninth
+shows people for only one frame. This is a synthetic camera wall assembled from
+[OpenCV's pedestrian sample](https://github.com/opencv/opencv/blob/master/samples/data/vtest.avi),
+not nine independent camera recordings. The script asserts that every moving
+pane qualifies and both controls remain suppressed, then writes an annotated
+MP4 and JSON measurements. Use `--models yolo11n.pt` for a single-model check,
+`--device cpu` without CUDA, or omit `--controls` for nine moving panes.
+
+The grid multiplies inference work by the number of panes; GPU throughput varies
+with enabled models, resolution, and hardware. Unit tests use scripted detections
+and mocked backends without model downloads (`python -m pytest`). Model loading
+is lazy; legacy global model attributes initialize on first access.

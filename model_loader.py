@@ -3,6 +3,9 @@ import numpy as np
 import pickle
 import cv2
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from trajectory import TrackingConfig, ByteTracker, pane_bounds
 from PIL import Image
 from transformers import (
     DetrImageProcessor,
@@ -13,7 +16,7 @@ from transformers import (
     AutoModelForObjectDetection,
 )
 from torchvision.models import detection
-from config import DEVICE, COCO_CLASSES_PATH, MODELS_CONFIG
+from config import DEVICE, COCO_CLASSES_PATH, MODELS_CONFIG, TRACKING_CONFIG
 
 def load_coco_classes(path):
     """Loads COCO class labels from a pickle file."""
@@ -41,6 +44,8 @@ class BaseDetector:
         self.key = key
         self.name = config_dict.get("name", key)
         self.confidence_threshold = float(config_dict.get("confidence_threshold", 0.5))
+        self.candidate_threshold = self.confidence_threshold
+        self.collect_all = False
         self.weight = float(config_dict.get("weight", 1.0))
         self.color = tuple(config_dict.get("color", (0, 255, 255)))
         self.device = device
@@ -64,12 +69,12 @@ class DetrDetector(BaseDetector):
     def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
         with torch.no_grad():
             img_enh = enhance_low_light(img)
-            image = Image.fromarray(img_enh)
+            image = Image.fromarray(cv2.cvtColor(img_enh, cv2.COLOR_BGR2RGB))
             inputs = self.processor(images=image, return_tensors="pt").to(self.device)
             outputs = self.model(**inputs)
             target_sizes = torch.tensor([image.size[::-1]])
             results = self.processor.post_process_object_detection(
-                outputs, target_sizes=target_sizes, threshold=self.confidence_threshold
+                outputs, target_sizes=target_sizes, threshold=self.candidate_threshold
             )[0]
 
             for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
@@ -77,7 +82,8 @@ class DetrDetector(BaseDetector):
                     with results_lock:
                         results_list.append(float(score.item() * self.weight))
                         box_list.append((box.tolist(), self.key))
-                    break
+                    if not self.collect_all:
+                        break
 
 class RfDetrDetector(BaseDetector):
     """RF-DETR (Roboflow) model handler."""
@@ -94,12 +100,12 @@ class RfDetrDetector(BaseDetector):
     def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
         with torch.no_grad():
             img_enh = enhance_low_light(img)
-            image = Image.fromarray(img_enh)
+            image = Image.fromarray(cv2.cvtColor(img_enh, cv2.COLOR_BGR2RGB))
             inputs = self.processor(images=image, return_tensors="pt").to(self.device)
             outputs = self.model(**inputs)
             target_sizes = torch.tensor([image.size[::-1]])
             results = self.processor.post_process_object_detection(
-                outputs, threshold=self.confidence_threshold, target_sizes=target_sizes
+                outputs, threshold=self.candidate_threshold, target_sizes=target_sizes
             )[0]
 
             for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
@@ -108,7 +114,8 @@ class RfDetrDetector(BaseDetector):
                     with results_lock:
                         results_list.append(float(score.item() * self.weight))
                         box_list.append((box.tolist(), self.key))
-                    break
+                    if not self.collect_all:
+                        break
 
 class YolosDetector(BaseDetector):
     """YOLOS (You Only Look at One Sequence) model handler."""
@@ -124,12 +131,12 @@ class YolosDetector(BaseDetector):
 
     def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
         with torch.no_grad():
-            image = Image.fromarray(img)
+            image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             inputs = self.processor(images=image, return_tensors="pt").to(self.device)
             outputs = self.model(**inputs)
             target_sizes = torch.tensor([image.size[::-1]])
             results = self.processor.post_process_object_detection(
-                outputs, threshold=self.confidence_threshold, target_sizes=target_sizes
+                outputs, threshold=self.candidate_threshold, target_sizes=target_sizes
             )[0]
 
             for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
@@ -137,7 +144,8 @@ class YolosDetector(BaseDetector):
                     with results_lock:
                         results_list.append(float(score.item() * self.weight))
                         box_list.append((box.tolist(), self.key))
-                    break
+                    if not self.collect_all:
+                        break
 
 class TorchvisionDetector(BaseDetector):
     """Torchvision model handler (Faster R-CNN, RetinaNet)."""
@@ -164,6 +172,10 @@ class TorchvisionDetector(BaseDetector):
         with torch.no_grad():
             frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             tensor = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).to(self.device, non_blocking=True).float().div_(255.0)
+            if hasattr(self.model, "roi_heads"):
+                self.model.roi_heads.score_thresh = self.candidate_threshold
+            elif hasattr(self.model, "score_thresh"):
+                self.model.score_thresh = self.candidate_threshold
             detections = self.model(tensor)[0]
 
             boxes = detections["boxes"]
@@ -172,14 +184,15 @@ class TorchvisionDetector(BaseDetector):
 
             for i in range(len(boxes)):
                 confidence = scores[i].item()
-                if confidence > self.confidence_threshold:
+                if confidence > self.candidate_threshold:
                     idx = int(labels[i].item())
                     if idx < len(CLASSES) and "person" in CLASSES[idx]:
                         box = boxes[i].detach().cpu().numpy()
                         with results_lock:
                             results_list.append(float(confidence * self.weight))
                             box_list.append((box, self.key))
-                        break
+                        if not self.collect_all:
+                            break
 
 class YOLOv5Detector(BaseDetector):
     """YOLOv5 model handler."""
@@ -187,18 +200,20 @@ class YOLOv5Detector(BaseDetector):
         super().__init__(key, config_dict, device)
         if "color" not in config_dict:
             self.color = (0, 165, 255)  # Orange
-        self.model = torch.hub.load("ultralytics/yolov5", self.name)
+        self.model = torch.hub.load("ultralytics/yolov5", self.name).to(self.device)
 
     def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
         with torch.no_grad():
-            detections = self.model(img)
+            self.model.conf = self.candidate_threshold
+            detections = self.model(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             detections_ary = detections.pandas().xyxy[0].to_numpy()
             for i in detections_ary:
-                if i[-1] == "person" and i[-3] > self.confidence_threshold:
+                if i[-1] == "person" and i[-3] > self.candidate_threshold:
                     with results_lock:
                         results_list.append(float(i[-3] * self.weight))
                         box_list.append((i[:4], self.key))
-                    break
+                    if not self.collect_all:
+                        break
 
 class UltralyticsDetector(BaseDetector):
     """Ultralytics modern YOLO (YOLO11, YOLOv8, RT-DETR) handler."""
@@ -212,10 +227,10 @@ class UltralyticsDetector(BaseDetector):
 
     def run(self, img: np.ndarray, results_list: list, box_list: list) -> None:
         with torch.no_grad():
-            res = self.model(img, device=self.device_str, verbose=False)[0]
+            res = self.model(img, device=self.device_str, conf=self.candidate_threshold, verbose=False)[0]
             for box in res.boxes:
                 conf = float(box.conf[0].item())
-                if conf > self.confidence_threshold:
+                if conf > self.candidate_threshold:
                     cls_id = int(box.cls[0].item())
                     label_name = res.names.get(cls_id, "")
                     if label_name == "person" or "person" in str(label_name).lower():
@@ -223,7 +238,8 @@ class UltralyticsDetector(BaseDetector):
                         with results_lock:
                             results_list.append(float(conf * self.weight))
                             box_list.append((xyxy.tolist(), self.key))
-                        break
+                        if not self.collect_all:
+                            break
 
 # --- Model Factory & Dynamic Pipeline ---
 
@@ -253,9 +269,15 @@ class ModelPipeline:
     Dynamic object detection pipeline managing N arbitrary models.
     Supports dynamic loading, enable/disable toggling, and configurable sequential/parallel execution.
     """
-    def __init__(self, models_config=None, device=None):
+    def __init__(self, models_config=None, device=None, tracking_config=None):
         self.device = device if device is not None else DEVICE
         self.models_config = models_config if models_config is not None else MODELS_CONFIG
+        self.tracking_config = TrackingConfig(**(TRACKING_CONFIG if tracking_config is None else tracking_config))
+        self.trackers = {}
+        self.pane_scores = {}
+        self._frame_shape = None
+        self._last_frame_time = None
+        self._inference_lock = threading.Lock()
         self.detectors = []
         self._load_models()
 
@@ -276,28 +298,109 @@ class ModelPipeline:
                 print(f"[MODEL_PIPELINE] ⚠️ Failed to load model '{key}': {e}")
         print(f"[MODEL_PIPELINE] ✅ Loaded {len(self.detectors)} active model(s).")
 
+    def reset_tracking(self):
+        """Call when changing input source or seeking a video."""
+        self.trackers.clear()
+        self.pane_scores = {}
+        self._frame_shape = None
+        self._last_frame_time = None
+
     def run_inference(self, img: np.ndarray, execution_mode: str = "sequential"):
-        """Runs inference across all active models in parallel or sequentially."""
-        results = []
-        multi_box = []
+        # Models and trajectory state are shared by the legacy singleton callers.
+        with self._inference_lock:
+            return self._run_frame(img, execution_mode)
 
-        if not self.detectors:
-            return results, multi_box
+    def _run_frame(self, img, execution_mode):
+        cfg = self.tracking_config
+        now = time.monotonic()
+        if (self._frame_shape != img.shape[:2] or
+                (self._last_frame_time is not None and now - self._last_frame_time > cfg.reset_gap_seconds)):
+            self.reset_tracking()
+        self._frame_shape = img.shape[:2]
+        self._last_frame_time = now
+        self.pane_scores = {}
+        panes = list(pane_bounds(img.shape, cfg)) if cfg.enabled else [(0, 0, 0, img.shape[1], img.shape[0])]
+        all_boxes = []
+        scores_by_pane = {}
 
-        if execution_mode == "parallel":
-            threads = [
-                threading.Thread(target=detector.run, args=(img, results, multi_box))
-                for detector in self.detectors
-            ]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-        else:
-            for detector in self.detectors:
-                detector.run(img, results, multi_box)
+        def run_detector(detector, crop):
+            detector.collect_all = cfg.enabled
+            detector.candidate_threshold = cfg.low_threshold if cfg.enabled else detector.confidence_threshold
+            scores, boxes = [], []
+            detector.run(crop, scores, boxes)
+            return detector, scores, boxes
 
-        return results, multi_box
+        # Parallelize models, never panes of the same model (model runtimes are stateful).
+        with ThreadPoolExecutor(max_workers=max(1, len(self.detectors))) as executor:
+            for pane, x1, y1, x2, y2 in panes:
+                crop = img[y1:y2, x1:x2]
+                if execution_mode == "parallel":
+                    futures = [executor.submit(run_detector, d, crop) for d in self.detectors]
+                    outputs = [f.result() for f in futures]
+                else:
+                    outputs = [run_detector(d, crop) for d in self.detectors]
+                pane_results = []
+                for detector, scores, boxes in outputs:
+                    if not cfg.enabled:
+                        pane_results.extend(scores)
+                        all_boxes.extend(boxes)
+                        continue
+                    tracker = self.trackers.setdefault((pane, detector.key), ByteTracker(cfg))
+                    candidates = []
+                    for score, (box, _) in zip(scores, boxes):
+                        box = np.asarray(box, dtype=float).copy()
+                        if box.shape != (4,) or not np.all(np.isfinite(box)) or not np.isfinite(score):
+                            continue
+                        box[[0, 2]] = np.clip(box[[0, 2]], 0, x2 - x1)
+                        box[[1, 3]] = np.clip(box[[1, 3]], 0, y2 - y1)
+                        if box[2] > box[0] and box[3] > box[1] and detector.weight > 0:
+                            candidates.append((box, score / detector.weight))
+                    qualified_scores = []
+                    for track in tracker.update(candidates):
+                        if (track.movement_frames >= cfg.min_movement_frames and
+                                track.score > detector.confidence_threshold):
+                            qualified_scores.append(track.score * detector.weight * cfg.score_multiplier)
+                            global_box = track.last_box + np.array([x1, y1, x1, y1])
+                            all_boxes.append((global_box.tolist(), detector.key))
+                    # Crowd size cannot inflate a model's ensemble vote.
+                    if qualified_scores:
+                        pane_results.append(max(qualified_scores))
+                scores_by_pane[pane] = pane_results
+                self.pane_scores[pane] = sum(pane_results)
+        # Unrelated cameras cannot manufacture ensemble agreement.
+        best = max(scores_by_pane, key=lambda p: sum(scores_by_pane[p]))
+        self._last_frame_time = time.monotonic()
+        return scores_by_pane[best], all_boxes
+
+    def draw_trajectories(self, img):
+        """Draw grid and bounded observed histories without modifying tracker state."""
+        cfg = self.tracking_config
+        if not cfg.enabled or not cfg.draw_history:
+            return
+        for pane, x1, y1, x2, y2 in pane_bounds(img.shape, cfg):
+            cv2.rectangle(img, (x1, y1), (x2 - 1, y2 - 1), (180, 180, 180), 1)
+            cv2.putText(img, f"Pane {pane + 1}: {self.pane_scores.get(pane, 0):.2f}",
+                        (x1 + 6, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 255, 255), 1)
+            # Drawing on the crop clips all trails/labels to their own camera pane.
+            crop = img[y1:y2, x1:x2]
+            for (track_pane, model), tracker in self.trackers.items():
+                if track_pane != pane:
+                    continue
+                for track in tracker.tracks:
+                    if track.missed:
+                        continue
+                    ready = track.movement_frames >= cfg.min_movement_frames
+                    color = (0, 220, 0) if ready else (0, 180, 255)
+                    points = []
+                    for _, box in track.history:
+                        a, b, c, d = map(int, box)
+                        cv2.rectangle(crop, (a, b), (c, d), color, 1)
+                        points.append(((a + c) // 2, (b + d) // 2))
+                    if len(points) > 1:
+                        cv2.polylines(crop, [np.array(points, np.int32)], False, color, 1)
+                    x, y = map(int, track.last_box[:2])
+                    cv2.putText(crop, f"{model} #{track.id} motion {track.movement_frames}/{cfg.min_movement_frames}",
+                                (x, max(30, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, .35, color, 1)
 
     def get_model_colors(self) -> dict[str, tuple]:
         """Returns mapping of model keys to their display BGR colors."""
@@ -307,12 +410,12 @@ class ModelPipeline:
 _pipeline = None
 _pipeline_lock = threading.Lock()
 
-def get_model_pipeline(models_config=None, device=None, reload=False) -> ModelPipeline:
+def get_model_pipeline(models_config=None, device=None, reload=False, tracking_config=None) -> ModelPipeline:
     """Returns singleton ModelPipeline instance."""
     global _pipeline
     with _pipeline_lock:
         if _pipeline is None or reload:
-            _pipeline = ModelPipeline(models_config=models_config, device=device)
+            _pipeline = ModelPipeline(models_config=models_config, device=device, tracking_config=tracking_config)
         return _pipeline
 
 # --- Legacy Backward Compatibility Exports ---
@@ -373,16 +476,25 @@ def run_yolov5(img, results_list, box_list):
             d.run(img, results_list, box_list)
             return
 
-# Expose model instances for backward compatibility
-detr_model, detr_processor = None, None
-yolos_model, yolos_processor = None, None
-frcnn_model = None
-retinanet_model = None
-yolov5_model = None
+# Resolve legacy model attributes lazily, retaining their import/access behavior.
+_LEGACY_MODEL_NAMES = {
+    "detr_model", "detr_processor", "yolos_model", "yolos_processor",
+    "frcnn_model", "retinanet_model", "yolov5_model",
+}
+
+
+def __getattr__(name):
+    if name in _LEGACY_MODEL_NAMES:
+        _init_legacy_globals()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def _init_legacy_globals():
     global detr_model, detr_processor, yolos_model, yolos_processor, frcnn_model, retinanet_model, yolov5_model
     p = get_model_pipeline()
+    for name in _LEGACY_MODEL_NAMES:
+        globals()[name] = None
     for d in p.detectors:
         if isinstance(d, DetrDetector):
             detr_model, detr_processor = d.model, d.processor
@@ -395,5 +507,3 @@ def _init_legacy_globals():
                 retinanet_model = d.model
         elif isinstance(d, YOLOv5Detector):
             yolov5_model = d.model
-
-_init_legacy_globals()

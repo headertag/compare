@@ -85,3 +85,20 @@ models:
 
 dashboard:
   remove_background: false
+
+# Trajectory evidence is opt-in; use min_movement_frames: 3 for a 3x3 camera wall.
+tracking:
+  rows: 3
+  columns: 3
+  min_movement_frames: 0 # 0 completely bypasses tracking/grid/boost (legacy behavior)
+  score_multiplier: 1.5 # Qualified model vote = confidence * model weight * this
+  movement_pixels: 2.0 # Minimum observed center displacement per processed frame
+  movement_box_fraction: 0.01 # Also require > this fraction of the box diagonal
+  low_threshold: 0.1 # Candidate floor BEFORE tracking; low scores can extend tracks
+  high_threshold: 0.4 # Minimum confidence to start or recover a lost track
+  match_iou: 0.2 # Minimum IoU for Kalman prediction / high-score Hungarian matching
+  low_match_iou: 0.3 # Minimum IoU in the second (low-score) association stage
+  max_lost_frames: 15 # Retain an unmatched identity this many processed frames
+  history_frames: 60 # Maximum observed boxes retained per track
+  reset_gap_seconds: 5.0 # Clear history after a processing/camera interruption
+  draw_history: true

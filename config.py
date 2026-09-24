@@ -43,3 +43,6 @@ MODELS_CONFIG = config["models"]
 
 # Dashboard
 REMOVE_BACKGROUND = config["dashboard"]["remove_background"]
+
+# Optional: omitted settings preserve the legacy, non-temporal pipeline.
+TRACKING_CONFIG = config.get("tracking", {})

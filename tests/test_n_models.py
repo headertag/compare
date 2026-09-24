@@ -106,3 +106,15 @@ def test_ultralytics_factory_dispatch():
         assert detector.weight == 0.5
         assert detector.color == (50, 205, 50)
 
+
+
+def test_legacy_globals_are_lazy_and_still_resolve():
+    import model_loader
+    with patch.object(model_loader, 'get_model_pipeline') as get_pipeline:
+        get_pipeline.return_value.detectors = []
+        for name in model_loader._LEGACY_MODEL_NAMES:
+            model_loader.__dict__.pop(name, None)
+        assert model_loader.detr_model is None
+        get_pipeline.assert_called_once()
+        for name in model_loader._LEGACY_MODEL_NAMES:
+            model_loader.__dict__.pop(name, None)
