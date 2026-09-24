@@ -178,7 +178,7 @@ For continuous operation (restarting on crash and starting on boot), use the inc
 
 ![Animated 16:9 camera grid with pane-local person trajectories](docs/assets/trajectory-vtest.gif)
 
-Demo generated from [OpenCV’s `vtest.avi`](https://github.com/opencv/opencv/blob/master/samples/data/vtest.avi): seven moving panes, one frozen pane, and one single-frame appearance. Green tracks qualify for the score boost; amber tracks are waiting for movement.
+Demo generated from [OpenCV’s `vtest.avi`](https://github.com/opencv/opencv/blob/master/samples/data/vtest.avi): one full-frame inference per model, followed by independent trajectory tracking in seven moving panes, one frozen pane, and one single-frame appearance. Green tracks qualify for the score boost; amber tracks are waiting for movement.
 
 Trajectory tracking adds movement evidence to each model's person prediction.
 It is opt-in, and works in both the main alerting application and dashboard.
@@ -198,8 +198,10 @@ tracking:
   history_frames: 60
 ```
 
-Each enabled model runs on each equally sized pane, returning all person
-candidates. Each **pane/model pair** owns an independent ByteTrack tracker:
+Each enabled model runs **once on the full frame**, returning all person
+candidates. The grid is applied afterward: each box is assigned to the pane
+containing its center, clipped at that pane's boundary, and translated to local
+coordinates. A box crossing a seam is never copied into multiple panes. Each **pane/model pair** owns an independent ByteTrack tracker:
 constant-velocity Kalman prediction, IoU-gated Hungarian matching of high-score
 candidates, then matching of low-score candidates to remaining active tracks.
 Low-score candidates extend existing tracks but cannot start or revive them.
@@ -290,7 +292,11 @@ pane qualifies and both controls remain suppressed, then writes an annotated
 MP4 and JSON measurements. Use `--models yolo11n.pt` for a single-model check,
 `--device cpu` without CUDA, or omit `--controls` for nine moving panes.
 
-The grid multiplies inference work by the number of panes; GPU throughput varies
-with enabled models, resolution, and hardware. Unit tests use scripted detections
+The grid does **not** multiply inference calls: a 3 × 3 grid still makes only
+one full-frame call per enabled model per processed frame. Added work is CPU
+box routing, pane-local Kalman/Hungarian tracking, and optional history drawing.
+Its cost depends on the number of detections and tracks; it is not zero.
+Full-frame detector resizing is unchanged, so small people in a camera mosaic
+may need an appropriate detector input resolution or model. Unit tests use scripted detections
 and mocked backends without model downloads (`python -m pytest`). Model loading
 is lazy; legacy global model attributes initialize on first access.

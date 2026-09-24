@@ -4,6 +4,8 @@ import pickle
 import cv2
 import threading
 import time
+import math
+from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
 from trajectory import TrackingConfig, ByteTracker, pane_bounds
 from PIL import Image
@@ -323,50 +325,71 @@ class ModelPipeline:
         all_boxes = []
         scores_by_pane = {}
 
-        def run_detector(detector, crop):
+        def run_detector(detector):
             detector.collect_all = cfg.enabled
             detector.candidate_threshold = cfg.low_threshold if cfg.enabled else detector.confidence_threshold
             scores, boxes = [], []
-            detector.run(crop, scores, boxes)
+            detector.run(img, scores, boxes)
             return detector, scores, boxes
 
-        # Parallelize models, never panes of the same model (model runtimes are stateful).
-        with ThreadPoolExecutor(max_workers=max(1, len(self.detectors))) as executor:
-            for pane, x1, y1, x2, y2 in panes:
-                crop = img[y1:y2, x1:x2]
-                if execution_mode == "parallel":
-                    futures = [executor.submit(run_detector, d, crop) for d in self.detectors]
-                    outputs = [f.result() for f in futures]
-                else:
-                    outputs = [run_detector(d, crop) for d in self.detectors]
-                pane_results = []
-                for detector, scores, boxes in outputs:
-                    if not cfg.enabled:
-                        pane_results.extend(scores)
-                        all_boxes.extend(boxes)
+        # Exactly one full-frame inference per model. Panes only partition detections.
+        inference_start = time.perf_counter()
+        if execution_mode == "parallel":
+            with ThreadPoolExecutor(max_workers=max(1, len(self.detectors))) as executor:
+                outputs = list(executor.map(run_detector, self.detectors))
+        else:
+            outputs = [run_detector(d) for d in self.detectors]
+        tracking_start = time.perf_counter()
+        routed = {}
+        if cfg.enabled:
+            height, width = img.shape[:2]
+            x_edges = [col * width // cfg.columns for col in range(cfg.columns + 1)]
+            y_edges = [row * height // cfg.rows for row in range(cfg.rows + 1)]
+            for detector, scores, boxes in outputs:
+                grouped = {pane: [] for pane, *_ in panes}
+                routed[detector.key] = grouped
+                for score, (box, _) in zip(scores, boxes):
+                    box = np.asarray(box, dtype=float)
+                    if (box.shape != (4,) or detector.weight <= 0 or
+                            not math.isfinite(score) or not all(math.isfinite(v) for v in box)):
                         continue
-                    tracker = self.trackers.setdefault((pane, detector.key), ByteTracker(cfg))
-                    candidates = []
-                    for score, (box, _) in zip(scores, boxes):
-                        box = np.asarray(box, dtype=float).copy()
-                        if box.shape != (4,) or not np.all(np.isfinite(box)) or not np.isfinite(score):
-                            continue
-                        box[[0, 2]] = np.clip(box[[0, 2]], 0, x2 - x1)
-                        box[[1, 3]] = np.clip(box[[1, 3]], 0, y2 - y1)
-                        if box[2] > box[0] and box[3] > box[1] and detector.weight > 0:
-                            candidates.append((box, score / detector.weight))
-                    qualified_scores = []
-                    for track in tracker.update(candidates):
-                        if (track.movement_frames >= cfg.min_movement_frames and
-                                track.score > detector.confidence_threshold):
-                            qualified_scores.append(track.score * detector.weight * cfg.score_multiplier)
-                            global_box = track.last_box + np.array([x1, y1, x1, y1])
-                            all_boxes.append((global_box.tolist(), detector.key))
-                    # Crowd size cannot inflate a model's ensemble vote.
-                    if qualified_scores:
-                        pane_results.append(max(qualified_scores))
-                scores_by_pane[pane] = pane_results
-                self.pane_scores[pane] = sum(pane_results)
+                    left, top, right, bottom = map(float, box)
+                    left, right = max(0., min(left, width)), max(0., min(right, width))
+                    top, bottom = max(0., min(top, height)), max(0., min(bottom, height))
+                    if right <= left or bottom <= top:
+                        continue
+                    col = bisect_right(x_edges, (left + right) / 2) - 1
+                    row = bisect_right(y_edges, (top + bottom) / 2) - 1
+                    pane = row * cfg.columns + col
+                    _, x1, y1, x2, y2 = panes[pane]
+                    # A seam-straddling box belongs only to its center's pane.
+                    local = np.array([max(left, x1) - x1, max(top, y1) - y1,
+                                      min(right, x2) - x1, min(bottom, y2) - y1])
+                    grouped[pane].append((local, score / detector.weight))
+        for pane, x1, y1, x2, y2 in panes:
+            pane_results = []
+            for detector, scores, boxes in outputs:
+                if not cfg.enabled:
+                    pane_results.extend(scores)
+                    all_boxes.extend(boxes)
+                    continue
+                tracker = self.trackers.setdefault((pane, detector.key), ByteTracker(cfg))
+                qualified_scores = []
+                for track in tracker.update(routed[detector.key][pane]):
+                    if (track.movement_frames >= cfg.min_movement_frames and
+                            track.score > detector.confidence_threshold):
+                        qualified_scores.append(track.score * detector.weight * cfg.score_multiplier)
+                        global_box = track.last_box + np.array([x1, y1, x1, y1])
+                        all_boxes.append((global_box.tolist(), detector.key))
+                # Crowd size cannot inflate a model's ensemble vote.
+                if qualified_scores:
+                    pane_results.append(max(qualified_scores))
+            scores_by_pane[pane] = pane_results
+            self.pane_scores[pane] = sum(pane_results)
+        self.last_timings = {
+            "inference_seconds": tracking_start - inference_start,
+            "tracking_seconds": time.perf_counter() - tracking_start,
+        }
         # Unrelated cameras cannot manufacture ensemble agreement.
         best = max(scores_by_pane, key=lambda p: sum(scores_by_pane[p]))
         self._last_frame_time = time.monotonic()

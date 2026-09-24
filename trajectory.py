@@ -91,30 +91,58 @@ class Track:
         return np.array([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2])
 
     def predict(self):
-        transition = np.eye(8)
-        transition[:4, 4:] = np.eye(4)
-        self.mean = transition @ self.mean
-        self.covariance = transition @ self.covariance @ transition.T + np.diag([1.] * 4 + [.25] * 4)
+        predict_tracks([self])
 
     def update(self, box, score, config, frame):
-        observed = measurement(box)
-        previous = measurement(self.last_box)
-        threshold = max(config.movement_pixels,
-                        config.movement_box_fraction * np.linalg.norm(previous[2:]))
+        update_tracks([self], [(box, score)], config, frame)
+
+
+_TRANSITION = np.eye(8)
+_TRANSITION[:4, 4:] = np.eye(4)
+_PROCESS_NOISE = np.diag([1.] * 4 + [.25] * 4)
+_MEASUREMENT_NOISE = np.eye(4) * 4
+
+
+def predict_tracks(tracks):
+    if not tracks:
+        return
+    means = np.array([t.mean for t in tracks]) @ _TRANSITION.T
+    covariances = np.array([t.covariance for t in tracks])
+    covariances = _TRANSITION @ covariances @ _TRANSITION.T + _PROCESS_NOISE
+    for track, mean, covariance in zip(tracks, means, covariances):
+        track.mean, track.covariance = mean, covariance
+
+
+def update_tracks(tracks, detections, config, frame):
+    """Batch small Kalman solves; only history bookkeeping needs Python per track."""
+    if not tracks:
+        return
+    boxes = np.array([d[0] for d in detections], dtype=float)
+    observed = np.concatenate(((boxes[:, :2] + boxes[:, 2:]) / 2,
+                               boxes[:, 2:] - boxes[:, :2]), axis=1)
+    means = np.array([t.mean for t in tracks])
+    covariances = np.array([t.covariance for t in tracks])
+    innovation = covariances[:, :4, :4] + _MEASUREMENT_NOISE
+    gain = np.linalg.solve(innovation, covariances[:, :4, :]).transpose(0, 2, 1)
+    means += (gain @ (observed - means[:, :4])[..., None])[..., 0]
+    residual = np.broadcast_to(np.eye(8), covariances.shape).copy()
+    residual[:, :, :4] -= gain
+    covariances = (residual @ covariances @ residual.transpose(0, 2, 1) +
+                   4 * gain @ gain.transpose(0, 2, 1))
+    for index, track in enumerate(tracks):
+        previous = track.last_box
+        threshold = max(config.movement_pixels, config.movement_box_fraction *
+                        math.hypot(previous[2] - previous[0], previous[3] - previous[1]))
+        distance = math.hypot(observed[index, 0] - (previous[0] + previous[2]) / 2,
+                              observed[index, 1] - (previous[1] + previous[3]) / 2)
         # Only consecutive measured motion qualifies; predictions and gaps never do.
-        moved = np.linalg.norm(observed[:2] - previous[:2]) > threshold
-        self.movement_frames = self.movement_frames + 1 if moved and self.missed == 0 else 0
-        innovation = self.covariance[:4, :4] + np.eye(4) * 4
-        gain = np.linalg.solve(innovation, self.covariance[:4, :]).T
-        self.mean += gain @ (observed - self.mean[:4])
-        residual = np.eye(8)
-        residual[:, :4] -= gain
-        self.covariance = residual @ self.covariance @ residual.T + 4 * gain @ gain.T
-        self.last_box = np.array(box, dtype=float)
-        self.score = score
-        self.history.append((frame, tuple(box)))
-        self.missed = 0
-        self.observations += 1
+        track.movement_frames = track.movement_frames + 1 if distance > threshold and track.missed == 0 else 0
+        track.mean, track.covariance = means[index], covariances[index]
+        track.last_box = boxes[index]
+        track.score = detections[index][1]
+        track.history.append((frame, tuple(boxes[index])))
+        track.missed = 0
+        track.observations += 1
 
 
 def iou(a, b):
@@ -130,7 +158,16 @@ def associate(tracks, detections, threshold):
     """Gated Hungarian matching, with explicit unmatched choices per track."""
     if not tracks or not detections:
         return [], list(range(len(tracks))), list(range(len(detections)))
-    costs = np.array([[1 - iou(t.predicted_box, d[0]) for d in detections] for t in tracks])
+    # Compute every pairwise overlap together instead of a Python loop per pair.
+    predicted = np.array([t.predicted_box for t in tracks])
+    observed = np.array([d[0] for d in detections])
+    overlap = np.maximum(0, np.minimum(predicted[:, None, 2:], observed[None, :, 2:]) -
+                         np.maximum(predicted[:, None, :2], observed[None, :, :2]))
+    intersection = overlap.prod(axis=2)
+    track_area = np.maximum(0, predicted[:, 2:] - predicted[:, :2]).prod(axis=1)
+    detection_area = np.maximum(0, observed[:, 2:] - observed[:, :2]).prod(axis=1)
+    union = track_area[:, None] + detection_area[None, :] - intersection
+    costs = 1 - np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
     valid = costs <= 1 - threshold
     # Large unmatched cost maximizes valid match cardinality before minimizing cost.
     penalty = len(tracks) + len(detections) + 1
@@ -155,23 +192,25 @@ class ByteTracker:
         cfg = self.config
         high = [(np.asarray(b, float), s) for b, s in detections if s >= cfg.high_threshold]
         low = [(np.asarray(b, float), s) for b, s in detections if cfg.low_threshold <= s < cfg.high_threshold]
-        for track in self.tracks:
-            track.predict()
+        predict_tracks(self.tracks)
         matches, unmatched, unused = associate(self.tracks, high, cfg.match_iou)
         observed = []
+        measurements = []
         for ti, di in matches:
             track = self.tracks[ti]
-            track.update(*high[di], cfg, self.frame)
             observed.append(track)
+            measurements.append(high[di])
         # Low scores can maintain an active trajectory but cannot create/revive one.
         active = [self.tracks[i] for i in unmatched if self.tracks[i].missed == 0]
         matches_low, _, _ = associate(active, low, cfg.low_match_iou)
         for ti, di in matches_low:
             track = active[ti]
-            track.update(*low[di], cfg, self.frame)
             observed.append(track)
+            measurements.append(low[di])
+        update_tracks(observed, measurements, cfg, self.frame)
+        observed_ids = {track.id for track in observed}
         for track in self.tracks:
-            if track not in observed:
+            if track.id not in observed_ids:
                 track.missed += 1
                 track.movement_frames = 0
         self.tracks = [t for t in self.tracks if t.missed <= cfg.max_lost_frames]

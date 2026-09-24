@@ -67,6 +67,13 @@ def main():
                              device=torch.device(args.device), tracking_config=config)
     if len(pipeline.detectors) != len(args.models):
         raise RuntimeError('Validation detector failed to load')
+    inference_calls = {d.key: 0 for d in pipeline.detectors}
+    for detector in pipeline.detectors:
+        original_run = detector.run
+        def counted_run(img, scores, boxes, key=detector.key, run=original_run):
+            inference_calls[key] += 1
+            return run(img, scores, boxes)
+        detector.run = counted_run
     capture = cv2.VideoCapture(args.video)
     if not capture.isOpened():
         raise RuntimeError(f'Cannot open {args.video}')
@@ -79,6 +86,7 @@ def main():
     frames = 0
     frozen = None
     timings = []
+    stage_timings = []
     try:
         while frames < args.frames:
             ok, frame = capture.read()
@@ -91,6 +99,7 @@ def main():
             start = time.perf_counter()
             scores, boxes = pipeline.run_inference(mosaic, args.execution_mode)
             timings.append(time.perf_counter() - start)
+            stage_timings.append(pipeline.last_timings.copy())
             qualified_panes = set()
             for (pane, _), tracker in pipeline.trackers.items():
                 entry = stats[str(pane)]
@@ -116,12 +125,15 @@ def main():
     report = dict(frames=frames, width=args.width, height=args.height, device=str(pipeline.device),
                   gpu=torch.cuda.get_device_name() if args.device == 'cuda' else None,
                   source=args.video, models=args.models, execution_mode=args.execution_mode,
-                  tracking=config, controls=args.controls,
+                  tracking=config, controls=args.controls, inference_calls=inference_calls,
+                  steady_inference_ms=float(np.mean([t['inference_seconds'] for t in stage_timings[1:]])) * 1000 if len(stage_timings) > 1 else None,
+                  steady_tracking_ms=float(np.mean([t['tracking_seconds'] for t in stage_timings[1:]])) * 1000 if len(stage_timings) > 1 else None,
                   seconds_per_mosaic=float(np.mean(timings)) if timings else None,
                   steady_seconds_per_mosaic=float(np.mean(timings[1:])) if len(timings) > 1 else None,
                   panes=stats)
     (output / 'validation.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
+    assert all(count == frames for count in inference_calls.values()), 'Expected one full-frame inference per model per frame'
     if args.controls:
         assert frames > 3, 'Too few frames'
         assert stats['7']['observed'] > 0, 'Frozen control must contain a detected person'

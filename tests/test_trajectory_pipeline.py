@@ -13,11 +13,15 @@ class ScriptedDetector(BaseDetector):
         self.calls = 0
 
     def run(self, img, results, boxes):
-        pane = int(img[0, 0, 0])
         self.calls += 1
-        if self.panes is None or pane in self.panes:
-            results.append(self.score * self.weight)
-            boxes.append(([self.x, 10, self.x + 30, 60], self.key))
+        self.last_shape = img.shape
+        from trajectory import pane_bounds, TrackingConfig
+        for pane, x1, y1, _, _ in pane_bounds(img.shape, TrackingConfig(rows=3, columns=3)):
+            if self.panes is None or pane in self.panes:
+                results.append(self.score * self.weight)
+                boxes.append(([x1 + self.x, y1 + 10, x1 + self.x + 30, y1 + 60], self.key))
+                if not self.collect_all:
+                    break
 
 
 def make_pipeline(**options):
@@ -44,6 +48,7 @@ def test_nine_panes_boost_once_per_model_and_keep_coordinates_local(mode):
             assert scores == [] and boxes == []
     assert scores == pytest.approx([1.2, .6])
     assert len(boxes) == 18
+    assert all(d.calls == 3 and d.last_shape == frame.shape for d in pipeline.detectors)
     assert len(pipeline.trackers) == 18
     assert boxes[-1][0] == [216, 210, 246, 260]
     for tracker in pipeline.trackers.values():
@@ -128,8 +133,10 @@ def test_crowd_does_not_multiply_model_weight():
     original = detector.run
     def crowd(img, scores, boxes):
         original(img, scores, boxes)
-        scores.append(.7)
-        boxes.append(([detector.x + 40, 10, detector.x + 65, 60], detector.key))
+        for pane in range(9):
+            x1, y1 = pane % 3 * 100, pane // 3 * 100
+            scores.append(.7)
+            boxes.append(([x1 + detector.x + 40, y1 + 10, x1 + detector.x + 65, y1 + 60], detector.key))
     detector.run = crowd
     for x in (10, 13, 16):
         detector.x = x
@@ -147,9 +154,8 @@ def test_invalid_candidates_are_dropped_and_history_is_clipped():
             boxes.append((box, detector.key))
     detector.run = invalid
     pipeline.run_inference(frame)
-    for tracker in pipeline.trackers.values():
-        assert len(tracker.tracks) == 1
-        assert tracker.tracks[0].history[0][1] == (0, 0, 100, 100)
+    assert sum(len(t.tracks) for t in pipeline.trackers.values()) == 1
+    assert pipeline.trackers[(0, 'fake')].tracks[0].history[0][1] == (0, 0, 100, 100)
 
 
 def test_live_resolution_change_rebuilds_local_tracking():
@@ -179,3 +185,29 @@ def test_widescreen_demo_preserves_source_proportions():
     assert np.all(mosaic[:360, 80:560] == 255)
     assert np.all(mosaic[:360, 560:640] == 0)
     assert np.array_equal(mosaic[:360, :640], mosaic[720:, 1280:])
+
+
+@pytest.mark.parametrize('mode', ['sequential', 'parallel'])
+@pytest.mark.parametrize('grid', [(1, 1), (3, 3), (4, 5)])
+def test_inference_count_independent_of_grid_size(mode, grid):
+    pipeline, frame = make_pipeline(rows=grid[0], columns=grid[1])
+    pipeline.detectors.append(ScriptedDetector('second'))
+    for _ in range(4):
+        pipeline.run_inference(frame, mode)
+    assert all(d.calls == 4 and d.last_shape == frame.shape for d in pipeline.detectors)
+
+
+@pytest.mark.parametrize('box,pane,local', [
+    ([90, 10, 110, 60], 1, (0, 10, 10, 60)),
+    ([85, 10, 105, 60], 0, (85, 10, 100, 60)),
+    ([10, 90, 60, 110], 3, (10, 0, 60, 10)),
+])
+def test_seam_box_assigned_once_by_center(box, pane, local):
+    pipeline, frame = make_pipeline()
+    def detect(img, scores, boxes):
+        scores.append(.8)
+        boxes.append((box, 'fake'))
+    pipeline.detectors[0].run = detect
+    pipeline.run_inference(frame)
+    assert sum(len(t.tracks) for t in pipeline.trackers.values()) == 1
+    assert pipeline.trackers[(pane, 'fake')].tracks[0].history[0][1] == local
