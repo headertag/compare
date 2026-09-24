@@ -1,5 +1,6 @@
 import time
 import random
+from collections import Counter
 from datetime import datetime
 import torch
 
@@ -41,6 +42,7 @@ def main(frame_callback=None):
     bot = initialize_bot()
     sender = AlertMediaSender(bot, media)
     last_alert = 0
+    last_detection_log = 0.0
 
     # Give camera time to warm up
     time.sleep(2)
@@ -57,6 +59,18 @@ def main(frame_callback=None):
 
             # Run inference dynamically across all enabled models in pipeline
             results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
+
+            # Explain alert qualification without logging images or credentials.
+            now = time.monotonic()
+            if pipeline.preview_boxes or now - last_detection_log >= 30:
+                reasons = Counter(track.motion_reason
+                                  for tracker in pipeline.trackers.values()
+                                  for track in tracker.tracks if track.missed == 0)
+                models = Counter(model for _, model, _ in pipeline.preview_boxes)
+                print(f"[DETECTION] models={dict(models)} qualified_boxes={len(multi_box)} "
+                      f"score={sum(results):.3f}/{ALERT_SENSITIVITY_THRESHOLD:g} "
+                      f"tracking={dict(reasons)}", flush=True)
+                last_detection_log = now
 
             # Overlay copies only: raw pixels remain untouched for the next inference.
             display = img.copy()
