@@ -3,7 +3,7 @@ import threading
 import queue
 import time
 import glob
-from config import CAM_INDEX, CAM_WIDTH, CAM_HEIGHT
+from config import CAM_INDEX, CAM_WIDTH, CAM_HEIGHT, debug_print
 
 class CameraManager:
     """
@@ -66,23 +66,23 @@ class CameraManager:
             for frame in stack[-4:-1]:  # Show last 3 frames before this one
                 caller_info.append(f"{frame.filename}:{frame.lineno} in {frame.name}")
 
-            print(f"\n[CAMERA] start() called by:")
+            debug_print(f"\n[CAMERA] start() called by:")
             for info in caller_info:
-                print(f"  {info}")
-            print(f"[CAMERA] Consumer count: {self.consumers}")
+                debug_print(f"  {info}")
+            debug_print(f"[CAMERA] Consumer count: {self.consumers}")
 
             if self.running:
-                print(f"[CAMERA] Camera already running. Total consumers: {self.consumers}\n")
+                debug_print(f"[CAMERA] Camera already running. Total consumers: {self.consumers}\n")
                 return
 
-            print(f"[CAMERA] Initializing camera with index/source: {CAM_INDEX}...")
+            debug_print(f"[CAMERA] Initializing camera with index/source: {CAM_INDEX}...")
             self._open_camera()
 
             self.running = True
             self.capture_thread = threading.Thread(target=self._reader_thread)
             self.capture_thread.daemon = True
             self.capture_thread.start()
-            print(f"[CAMERA] Camera reader thread started. Consumers: {self.consumers}\n")
+            debug_print(f"[CAMERA] Camera reader thread started. Consumers: {self.consumers}\n")
 
     def stop(self):
         """Stop the camera capture thread when no more consumers."""
@@ -97,20 +97,20 @@ class CameraManager:
             for frame in stack[-4:-1]:
                 caller_info.append(f"{frame.filename}:{frame.lineno} in {frame.name}")
 
-            print(f"\n[CAMERA] stop() called by:")
+            debug_print(f"\n[CAMERA] stop() called by:")
             for info in caller_info:
-                print(f"  {info}")
-            print(f"[CAMERA] Remaining consumers: {self.consumers}")
+                debug_print(f"  {info}")
+            debug_print(f"[CAMERA] Remaining consumers: {self.consumers}")
 
             if self.consumers > 0:
-                print(f"[CAMERA] Camera kept alive for remaining consumers\n")
+                debug_print(f"[CAMERA] Camera kept alive for remaining consumers\n")
                 return
 
             if not self.running:
-                print(f"[CAMERA] Camera already stopped\n")
+                debug_print(f"[CAMERA] Camera already stopped\n")
                 return
 
-            print("[CAMERA] Stopping camera reader thread...")
+            debug_print("[CAMERA] Stopping camera reader thread...")
             self.running = False
 
             if self.capture_thread and self.capture_thread.is_alive():
@@ -120,7 +120,7 @@ class CameraManager:
                 self.cam.release()
                 self.cam = None
 
-            print("[CAMERA] Camera released.\n")
+            debug_print("[CAMERA] Camera released.\n")
 
     def get_frame(self):
         """Get the latest frame from the queue without blocking."""
@@ -176,7 +176,7 @@ class CameraManager:
                     pass
             self.frame_queue.put(frame)
 
-        print("[CAMERA] Camera reader thread stopped.")
+        debug_print("[CAMERA] Camera reader thread stopped.")
 
 
 # Singleton instance
@@ -187,10 +187,10 @@ def get_camera_manager():
     import traceback
     global _camera_manager
     if _camera_manager is None:
-        print("\n[CAMERA] Creating NEW CameraManager singleton")
+        debug_print("\n[CAMERA] Creating NEW CameraManager singleton")
         stack = traceback.extract_stack()
         for frame in stack[-4:-1]:
-            print(f"  {frame.filename}:{frame.lineno} in {frame.name}")
+            debug_print(f"  {frame.filename}:{frame.lineno} in {frame.name}")
         _camera_manager = CameraManager()
     return _camera_manager
 

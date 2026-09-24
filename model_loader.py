@@ -18,7 +18,7 @@ from transformers import (
     AutoModelForObjectDetection,
 )
 from torchvision.models import detection
-from config import DEVICE, COCO_CLASSES_PATH, MODELS_CONFIG, TRACKING_CONFIG
+from config import DEVICE, COCO_CLASSES_PATH, MODELS_CONFIG, TRACKING_CONFIG, DEBUG_MODE, debug_print
 
 def load_coco_classes(path):
     """Loads COCO class labels from a pickle file."""
@@ -293,18 +293,19 @@ class ModelPipeline:
             if not isinstance(conf, dict):
                 continue
             if not conf.get("enabled", True):
-                print(f"[MODEL_PIPELINE] ⏩ Skipping disabled model: '{key}'")
+                debug_print(f"[MODEL_PIPELINE] ⏩ Skipping disabled model: '{key}'")
                 continue
-            print(f"[MODEL_PIPELINE] 📦 Loading model: '{key}' ({conf.get('name', key)})...")
+            debug_print(f"[MODEL_PIPELINE] 📦 Loading model: '{key}' ({conf.get('name', key)})...")
             try:
                 detector = create_detector(key, conf, self.device)
                 self.detectors.append(detector)
             except Exception as e:
                 print(f"[MODEL_PIPELINE] ⚠️ Failed to load model '{key}': {e}")
-        print(f"[MODEL_PIPELINE] ✅ Loaded {len(self.detectors)} active model(s).")
+        debug_print(f"[MODEL_PIPELINE] ✅ Loaded {len(self.detectors)} active model(s).")
 
     def reset_tracking(self):
         """Call when changing input source or seeking a video."""
+        debug_print(f"[TRACKING] reset generation={self.stream_generation + 1}")
         self.trackers.clear()
         self.preview_boxes = []
         self.stream_generation += 1
@@ -335,7 +336,12 @@ class ModelPipeline:
             detector.collect_all = cfg.enabled
             detector.candidate_threshold = detector.confidence_threshold
             scores, boxes = [], []
+            started = time.perf_counter()
             detector.run(img, scores, boxes)
+            if DEBUG_MODE:
+                debug_print(f"[MODEL] name={detector.key} elapsed_ms={(time.perf_counter()-started)*1000:.1f} "
+                            f"threshold={detector.confidence_threshold} weight={detector.weight} "
+                            f"detections={[(model, list(box), score / detector.weight if detector.weight > 0 else None) for score, (box, model) in zip(scores, boxes)]}")
             return detector, scores, boxes
 
         # Exactly one full-frame inference per model. Panes only partition detections.
@@ -408,6 +414,17 @@ class ModelPipeline:
             "inference_seconds": tracking_start - inference_start,
             "tracking_seconds": time.perf_counter() - tracking_start,
         }
+        if DEBUG_MODE:
+            for (pane, model), tracker in self.trackers.items():
+                for track in tracker.tracks:
+                    debug_print(f"[TRACK] pane={pane+1} model={model} id={track.id} "
+                                f"confidence={track.score:.4f} missed={track.missed} observations={track.observations} "
+                                f"movement_frames={track.movement_frames}/{cfg.min_movement_frames} "
+                                f"visual_fraction={track.visual_fraction:.4f}/{cfg.visual_change_fraction} "
+                                f"visual_history={list(track.visual_history)} "
+                                f"reason={'unmatched' if track.missed else track.motion_reason} "
+                                f"box={track.last_box.tolist()}")
+            debug_print(f"[SCORES] panes={self.pane_scores} timings={self.last_timings}")
         # Unrelated cameras cannot manufacture ensemble agreement.
         best = max(scores_by_pane, key=lambda p: sum(scores_by_pane[p]))
         self._last_frame_time = time.monotonic()

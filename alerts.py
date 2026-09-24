@@ -1,5 +1,5 @@
 import telepot
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS
+from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS, debug_print
 
 def initialize_bot():
     """Initializes and returns the Telegram bot object."""
@@ -34,6 +34,7 @@ class AlertMediaSender:
             return False
         try:
             self.queue.put_nowait(tuple(frames))
+            debug_print(f"[MEDIA] queued frames={len(frames)} fps={self.config.playback_fps}")
             return True
         except queue.Full:
             print('Alert media queue busy; inference continues without queuing another clip.')
@@ -60,6 +61,7 @@ class AlertMediaSender:
             have_video = False
             if self.config.video_enabled and frames:
                 try:
+                    debug_print(f"[MEDIA] encoding frames={len(frames)} fps={self.config.playback_fps}")
                     encode_alert_video(frames, video, self.config.playback_fps)
                     have_video = True
                 except Exception as exc:
@@ -70,12 +72,13 @@ class AlertMediaSender:
                         try:
                             with video.open('rb') as clip:
                                 self.bot.sendVideo(chat_id, clip, supports_streaming=True)
-                            print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.', flush=True)
+                            debug_print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.')
                             continue
                         except Exception as exc:
                             print(f'Video upload failed for {chat_id}; using snapshot: {exc}')
                     image = io.BytesIO(frames[-1].jpeg)
                     image.name = 'person-alert.jpg'
                     self.bot.sendPhoto(chat_id, image)
+                    debug_print('[MEDIA] photo delivered')
                 except Exception as exc:
                     print(f'Failed to send alert to {chat_id}: {exc}')

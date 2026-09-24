@@ -49,3 +49,18 @@ TRACKING_CONFIG = config.get("tracking", {})
 
 # Display magnifiers and retrospective Telegram video clips.
 ALERT_MEDIA_CONFIG = config.get("alert_media", {})
+
+# Shared switch for diagnostic logs and model/confidence zoom labels.
+DEBUG_MODE = ALERT_MEDIA_CONFIG.get("debug_mode", True)
+if not isinstance(DEBUG_MODE, bool):
+    raise ValueError("alert_media.debug_mode must be boolean")
+
+
+def debug_print(*values):
+    if DEBUG_MODE:
+        import re
+        message = " ".join(str(value) for value in values)
+        if TELEGRAM_TOKEN:
+            message = message.replace(str(TELEGRAM_TOKEN), "<redacted>")
+        message = re.sub(r"[a-zA-Z]+://\S+", "<url>", message)
+        print(message, flush=True)

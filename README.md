@@ -350,8 +350,11 @@ Each inset shows large model names at bottom left and raw confidence percentages
 at bottom right, using each model’s configured BGR color. Overlapping detections
 share one zoom with one label row per model; percentages exclude ensemble weights
 and trajectory boosts. Set `alert_media.debug_mode: false` to hide these inset
-labels in the live preview and Telegram clips. It defaults to `true` and does
-not change detection, zooms, trajectory overlays, or console logging.
+labels in the live preview and Telegram clips and suppress diagnostic logs.
+It defaults to `true`: logs include model confidence and boxes, inference timing,
+track matching/motion qualification, per-pane scores, alert timing decisions,
+and media encoding/delivery. Errors remain visible when disabled. Restart the
+service after changing the setting. Detection, zooms, and trajectory rules are unchanged.
 
 Telegram alerts now send a playable H.264 MP4 containing the **person-containing frames from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms

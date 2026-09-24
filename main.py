@@ -15,6 +15,8 @@ from config import (
     EXECUTION_MODE,
     INTER_FRAME_DELAY,
     ALERT_MEDIA_CONFIG,
+    DEBUG_MODE,
+    debug_print,
 )
 from camera import get_camera_manager
 from alerts import initialize_bot, AlertMediaSender
@@ -42,7 +44,6 @@ def main(frame_callback=None):
     bot = initialize_bot()
     sender = AlertMediaSender(bot, media)
     last_alert = 0
-    last_detection_log = 0.0
 
     # Give camera time to warm up
     time.sleep(2)
@@ -61,16 +62,14 @@ def main(frame_callback=None):
             results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
 
             # Explain alert qualification without logging images or credentials.
-            now = time.monotonic()
-            if pipeline.preview_boxes or now - last_detection_log >= 30:
+            if DEBUG_MODE:
                 reasons = Counter(track.motion_reason
                                   for tracker in pipeline.trackers.values()
                                   for track in tracker.tracks if track.missed == 0)
                 models = Counter(model for _, model, _ in pipeline.preview_boxes)
-                print(f"[DETECTION] models={dict(models)} qualified_boxes={len(multi_box)} "
+                debug_print(f"[DETECTION] models={dict(models)} qualified_boxes={len(multi_box)} "
                       f"score={sum(results):.3f}/{ALERT_SENSITIVITY_THRESHOLD:g} "
-                      f"tracking={dict(reasons)}", flush=True)
-                last_detection_log = now
+                      f"tracking={dict(reasons)}")
 
             # Overlay copies only: raw pixels remain untouched for the next inference.
             display = img.copy()
@@ -84,6 +83,18 @@ def main(frame_callback=None):
             history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]),
                            has_person=bool(pipeline.preview_boxes))
 
+            if DEBUG_MODE:
+                elapsed = datetime.now().timestamp() - last_alert
+                ready_after = max(MIN_ALERT_INTERVAL, MIN_ALERT_INTERVAL * ALERT_COOLDOWN_THRESHOLD)
+                reason = ('below score threshold' if sum(results) < ALERT_SENSITIVITY_THRESHOLD
+                          else 'waiting for alert interval' if elapsed <= MIN_ALERT_INTERVAL
+                          else 'cooldown multiplier gate' if elapsed < ready_after
+                          else 'no encoded preview' if jpeg is None else 'eligible to queue')
+                debug_print(f"[ALERT] decision={reason} elapsed_seconds={elapsed:.1f} "
+                            f"interval={MIN_ALERT_INTERVAL} multiplier={ALERT_COOLDOWN_THRESHOLD} "
+                            f"cooldown={ALERT_COOLDOWN} history={len(history.snapshot())} "
+                            f"history_bytes={history.size_bytes} queued={sender.queue.qsize()}")
+
             if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
                 current_epoch = datetime.now().timestamp()
                 time_delta = current_epoch - last_alert
@@ -91,7 +102,7 @@ def main(frame_callback=None):
                     if time_delta / MIN_ALERT_INTERVAL < ALERT_COOLDOWN_THRESHOLD:
                         time.sleep(ALERT_COOLDOWN)
                     elif jpeg is not None and sender.submit(history.snapshot()):
-                        print(f"Alert queued. Score: {sum(results)}")
+                        debug_print(f"Alert queued. Score: {sum(results)}")
                         last_alert = current_epoch
                         torch.manual_seed(random.randint(1, 3000000))
 

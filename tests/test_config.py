@@ -68,3 +68,16 @@ def test_execution_mode_and_inter_frame_delay():
     assert EXECUTION_MODE in ("sequential", "parallel")
     assert isinstance(INTER_FRAME_DELAY, float)
     assert INTER_FRAME_DELAY >= 0.0
+
+
+def test_debug_logging_toggle_and_credential_redaction(monkeypatch, capsys):
+    import config
+    monkeypatch.setattr(config, 'DEBUG_MODE', True)
+    monkeypatch.setattr(config, 'TELEGRAM_TOKEN', 'secret-test-token')
+    config.debug_print('test', 'secret-test-token', 'rtsp://user:password@camera')
+    output = capsys.readouterr().out
+    assert 'test' in output and '<redacted>' in output
+    assert 'secret-test-token' not in output and 'password' not in output
+    monkeypatch.setattr(config, 'DEBUG_MODE', False)
+    config.debug_print('hidden')
+    assert capsys.readouterr().out == ''

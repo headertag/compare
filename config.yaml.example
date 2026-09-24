@@ -111,7 +111,7 @@ tracking:
 
 # Display-only zooms; original model thresholds and trajectory scoring are unchanged.
 alert_media:
-  debug_mode: true # Set false to hide model/confidence text inside zooms
+  debug_mode: true # Verbose diagnostic logs + zoom model/confidence text; false disables both
   zoom_enabled: true
   zoom_factor: 6.0
   zoom_max_pane_fraction: 1.0 # Insets remain inside their original camera pane
