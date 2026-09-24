@@ -349,7 +349,9 @@ viewing aid, not a declaration that a candidate has qualified for an alert.
 Each inset shows large model names at bottom left and raw confidence percentages
 at bottom right, using each model’s configured BGR color. Overlapping detections
 share one zoom with one label row per model; percentages exclude ensemble weights
-and trajectory boosts.
+and trajectory boosts. Set `alert_media.debug_mode: false` to hide these inset
+labels in the live preview and Telegram clips. It defaults to `true` and does
+not change detection, zooms, trajectory overlays, or console logging.
 
 Telegram alerts now send a playable H.264 MP4 containing the **person-containing frames from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms
@@ -360,6 +362,7 @@ The live JPEG snapshot/stream remains live JPEG, not a video file.
 
 ```yaml
 alert_media:
+  debug_mode: true
   zoom_enabled: true
   zoom_factor: 6.0
   zoom_max_pane_fraction: 1.0

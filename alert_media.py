@@ -11,6 +11,7 @@ from trajectory import iou, pane_bounds, TrackingConfig
 
 @dataclass(frozen=True)
 class MediaConfig:
+    debug_mode: bool = True
     zoom_enabled: bool = True
     zoom_factor: float = 6.0
     zoom_max_pane_fraction: float = 1.0
@@ -21,7 +22,7 @@ class MediaConfig:
     playback_fps: float = 1.0
 
     def __post_init__(self):
-        for name in ('zoom_enabled', 'video_enabled'):
+        for name in ('debug_mode', 'zoom_enabled', 'video_enabled'):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f'alert_media.{name} must be boolean')
         for name in ('history_frames', 'max_zoom_per_pane'):
@@ -103,7 +104,8 @@ pane. Insets are display cues, not additional detections or alert evidence.
             pane_img = result[py1:py2, px1:px2]
             cv2.rectangle(pane_img, (left-px1, top-py1), (right-px1-1, bottom-py1-1), color, 2)
             cv2.rectangle(pane_img, (x1-px1, y1-py1), (x2-px1-1, y2-py1-1), color, 1)
-            _draw_zoom_labels(result[top:bottom, left:right], evidence, model_colors or {})
+            if config.debug_mode:
+                _draw_zoom_labels(result[top:bottom, left:right], evidence, model_colors or {})
     return result
 
 

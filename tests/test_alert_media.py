@@ -208,3 +208,17 @@ def test_zoom_labels_keep_each_models_raw_confidence_and_color():
         assert calls[model][2][0] < calls[percentage][2][0]
         assert calls[model][2][1] == calls[percentage][2][1]
         assert calls[model][4] >= .7
+
+
+def test_debug_mode_defaults_on_and_can_hide_only_inset_labels():
+    assert MediaConfig().debug_mode is True
+    with pytest.raises(ValueError, match='debug_mode must be boolean'):
+        MediaConfig(debug_mode='false')
+    raw = np.full((540, 960, 3), 100, np.uint8)
+    with patch('alert_media.cv2.putText', wraps=cv2.putText) as text, \
+         patch('alert_media.cv2.resize', wraps=cv2.resize) as resize:
+        result = draw_person_zoom(raw, [([200, 200, 250, 280], 'yolo', .9)],
+                                  MediaConfig(debug_mode=False))
+    text.assert_not_called()
+    assert resize.call_count == 1
+    assert not np.array_equal(result, raw)
