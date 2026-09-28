@@ -79,7 +79,8 @@ def main(frame_callback=None):
                                        model_colors=pipeline.get_model_colors())
             jpeg = broadcaster.update_frame(
                 display, results=results, threshold=ALERT_SENSITIVITY_THRESHOLD,
-                multi_box=multi_box, model_colors=pipeline.get_model_colors())
+                multi_box=multi_box, model_colors=pipeline.get_model_colors(),
+                confirmed_panes=pipeline.get_confirmed_panes())
             history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]),
                            has_person=bool(pipeline.preview_boxes))
 
@@ -101,7 +102,7 @@ def main(frame_callback=None):
                 if time_delta > MIN_ALERT_INTERVAL:
                     if time_delta / MIN_ALERT_INTERVAL < ALERT_COOLDOWN_THRESHOLD:
                         time.sleep(ALERT_COOLDOWN)
-                    elif jpeg is not None and sender.submit(history.snapshot()):
+                    elif jpeg is not None and sender.submit(history.snapshot(pipeline.get_alert_focus())):
                         debug_print(f"Alert queued. Score: {sum(results)}")
                         last_alert = current_epoch
                         torch.manual_seed(random.randint(1, 3000000))

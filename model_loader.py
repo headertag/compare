@@ -461,6 +461,22 @@ class ModelPipeline:
                     cv2.putText(crop, f"{model} #{track.id} {label}",
                                 (x, max(30, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, .35, color, 1)
 
+    def get_confirmed_panes(self):
+        if not self.tracking_config.enabled or self._frame_shape is None:
+            return []
+        return [(x1, y1, x2, y2)
+                for pane, x1, y1, x2, y2 in pane_bounds(self._frame_shape, self.tracking_config)
+                if self.pane_scores.get(pane, 0) > 0]
+
+    def get_alert_focus(self):
+        if not self.tracking_config.enabled or not self.pane_scores:
+            return (0., 0., 1., 1.)
+        best = max(self.pane_scores, key=self.pane_scores.get)
+        h, w = self._frame_shape[:2]
+        for pane, x1, y1, x2, y2 in pane_bounds(self._frame_shape, self.tracking_config):
+            if pane == best:
+                return (x1/w, y1/h, x2/w, y2/h)
+
     def get_model_colors(self) -> dict[str, tuple]:
         """Returns mapping of model keys to their display BGR colors."""
         return {detector.key: detector.color for detector in self.detectors}

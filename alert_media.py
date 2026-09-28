@@ -1,6 +1,6 @@
 """Display-only person magnifiers and a bounded, immutable alert-video buffer."""
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import math
 import cv2
@@ -142,6 +142,7 @@ def _draw_zoom_labels(inset, evidence, colors):
 class HistoryFrame:
     jpeg: bytes
     timestamp: float
+    focus_box: tuple | None = None  # Normalized triggering pane, fixed for the clip.
 
 
 class AlertHistory:
@@ -166,8 +167,9 @@ class AlertHistory:
                                self.size_bytes > self.config.history_max_mb*1024*1024):
             self.size_bytes -= len(self.frames.popleft().jpeg)
 
-    def snapshot(self):
-        return tuple(frame for frame in self.frames if frame.jpeg)
+    def snapshot(self, focus_box=None):
+        return tuple(replace(frame, focus_box=focus_box) if focus_box is not None else frame
+                     for frame in self.frames if frame.jpeg)
 
 
 def encode_alert_video(frames, path, fps):
@@ -178,6 +180,7 @@ def encode_alert_video(frames, path, fps):
     first = cv2.imdecode(np.frombuffer(frames[0].jpeg, np.uint8), cv2.IMREAD_COLOR)
     if first is None:
         raise ValueError('Invalid alert JPEG')
+    first = compose_alert_frame(first, frames[0].focus_box)
     height, width = first.shape[:2]
     even_w, even_h = width + width%2, height + height%2
     writer = imageio_ffmpeg.write_frames(str(path), (even_w, even_h), fps=fps,
@@ -188,6 +191,8 @@ def encode_alert_video(frames, path, fps):
     try:
         for entry in frames:
             image = cv2.imdecode(np.frombuffer(entry.jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if image is not None:
+                image = compose_alert_frame(image, entry.focus_box)
             if image is None or image.shape[:2] != (height, width):
                 raise ValueError('Invalid/mismatched alert frame')
             image = cv2.copyMakeBorder(image, 0, height%2, 0, width%2, cv2.BORDER_CONSTANT)
@@ -196,3 +201,34 @@ def encode_alert_video(frames, path, fps):
         writer.close()
     if not Path(path).is_file() or not 0 < Path(path).stat().st_size < 49_000_000:
         raise ValueError('Alert video missing or exceeds upload budget')
+
+
+def compose_alert_frame(image, focus_box):
+    """Keep the grid above a full-width view of the triggering pane."""
+    if focus_box is None:
+        return image
+    h, w = image.shape[:2]
+    x1, y1, x2, y2 = focus_box
+    left, top = round(x1*w), round(y1*h)
+    right, bottom = round(x2*w), round(y2*h)
+    if not (0 <= left < right <= w and 0 <= top < bottom <= h):
+        raise ValueError('Invalid alert focus pane')
+    crop = image[top:bottom, left:right]
+    # Preserve aspect ratio for non-square grids, with black padding if needed.
+    factor = min(w/crop.shape[1], h/crop.shape[0])
+    cw, ch = min(w, round(crop.shape[1]*factor)), min(h, round(crop.shape[0]*factor))
+    lower = np.zeros_like(image)
+    x, y = (w-cw)//2, (h-ch)//2
+    lower[y:y+ch, x:x+cw] = cv2.resize(crop, (cw, ch), interpolation=cv2.INTER_LINEAR)
+    return np.concatenate((image, lower), axis=0)
+
+
+def draw_confirmed_panes(image, bounds, scale=1.0):
+    """Draw inside each qualifying pane; independent of debug/history/zoom flags."""
+    thickness = max(3, round(image.shape[1]/320))
+    for x1, y1, x2, y2 in bounds:
+        left, top, right, bottom = [round(v*scale) for v in (x1, y1, x2, y2)]
+        pane = image[top:bottom, left:right]
+        if pane.size:
+            cv2.rectangle(pane, (0, 0), (pane.shape[1]-1, pane.shape[0]-1),
+                          (0, 255, 0), thickness)

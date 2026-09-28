@@ -15,7 +15,7 @@ from config import (
 )
 from camera import get_camera_manager
 from model_loader import get_model_pipeline
-from alert_media import MediaConfig, draw_person_zoom
+from alert_media import MediaConfig, draw_person_zoom, draw_confirmed_panes
 
 def main(frame_callback=None):
     """
@@ -63,6 +63,8 @@ def main(frame_callback=None):
             img = draw_person_zoom(raw, pipeline.preview_boxes, media,
                                    pipeline.tracking_config if pipeline.tracking_config.enabled else None,
                                    canvas=img, model_colors=pipeline.get_model_colors())
+
+            draw_confirmed_panes(img, pipeline.get_confirmed_panes())
 
             if frame_callback:
                 frame_callback(img)

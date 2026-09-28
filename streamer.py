@@ -2,6 +2,7 @@ import threading
 import time
 import os
 import cv2
+from alert_media import draw_confirmed_panes
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
@@ -24,7 +25,7 @@ class PreviewBroadcaster:
         self.shm_path = "/dev/shm/preview.jpg"
         self.local_path = "preview.jpg"
 
-    def update_frame(self, frame, results=None, threshold=2.3, multi_box=None, status_text="Monitoring", target_width=1920, model_colors=None):
+    def update_frame(self, frame, results=None, threshold=2.3, multi_box=None, status_text="Monitoring", target_width=1920, model_colors=None, confirmed_panes=()):
         """Update current frame, draw candidate bounding boxes, and encode lightweight preview JPEG."""
         orig_h, orig_w = frame.shape[:2]
 
@@ -93,6 +94,8 @@ class PreviewBroadcaster:
         left_text = f"[{alert_status}] Score: {score:.2f} / {threshold:.2f}  |  {timestamp_str}  |  {orig_w}x{orig_h}"
         cv2.putText(preview_img, left_text, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color_white, 1)
         cv2.circle(preview_img, (w - 20, 18), 7, status_color, -1)
+
+        draw_confirmed_panes(preview_img, confirmed_panes, scale)
 
         # Encode to lightweight JPEG (quality 75, ~25KB per frame)
         ret, jpeg = cv2.imencode('.jpg', preview_img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])

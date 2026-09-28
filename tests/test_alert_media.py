@@ -222,3 +222,55 @@ def test_debug_mode_defaults_on_and_can_hide_only_inset_labels():
     text.assert_not_called()
     assert resize.call_count == 1
     assert not np.array_equal(result, raw)
+
+
+def test_four_by_four_focus_doubles_height_and_stays_fixed(tmp_path):
+    from alert_media import compose_alert_frame, draw_confirmed_panes
+    raw = np.zeros((180, 320, 3), np.uint8)
+    raw[90:135, 240:320] = (40, 120, 210)  # Pane 12
+    focus = (.75, .5, 1., .75)
+    combined = compose_alert_frame(raw, focus)
+    assert combined.shape == (360, 320, 3)
+    assert np.array_equal(combined[:180], raw)
+    assert np.all(combined[180:] == (40, 120, 210))
+    draw_confirmed_panes(raw, [(240, 90, 320, 135)])
+    assert tuple(raw[90, 240]) == (0, 255, 0)
+    assert tuple(raw[89, 239]) == (0, 0, 0)
+    ok, data = cv2.imencode('.jpg', raw)
+    history = AlertHistory(MediaConfig())
+    history.append(data.tobytes(), 0, 'grid')
+    history.append(data.tobytes(), 1, 'grid')
+    snapshot = history.snapshot(focus)
+    history.append(jpeg(), 2, 'different-source')
+    assert all(frame.focus_box == focus for frame in snapshot)
+    path = tmp_path/'focused.mp4'
+    encode_alert_video(snapshot, path, 1)
+    cap = cv2.VideoCapture(str(path))
+    assert cap.get(cv2.CAP_PROP_FRAME_COUNT) == 2
+    assert cap.get(cv2.CAP_PROP_FPS) == 1
+    ok, decoded = cap.read()
+    cap.release()
+    assert ok and decoded.shape == (360, 320, 3)
+    assert np.allclose(decoded[260, 160], (40, 120, 210), atol=8)
+
+
+def test_non_square_focus_is_letterboxed_not_stretched():
+    from alert_media import compose_alert_frame
+    raw = np.full((100, 200, 3), 160, np.uint8)
+    result = compose_alert_frame(raw, (0, 0, .5, 1))
+    assert result.shape == (200, 200, 3)
+    assert np.all(result[100:, :50] == 0)
+    assert np.all(result[100:, 50:150] == 160)
+
+
+def test_broadcaster_pane_border_survives_banner_and_scaling(tmp_path):
+    from streamer import PreviewBroadcaster
+    broadcaster = PreviewBroadcaster()
+    broadcaster.shm_path = str(tmp_path/'preview.jpg')
+    raw = np.zeros((720, 1280, 3), np.uint8)
+    encoded = broadcaster.update_frame(raw, target_width=640,
+                                      confirmed_panes=[(320, 0, 640, 180)])
+    decoded = cv2.imdecode(np.frombuffer(encoded, np.uint8), 1)
+    assert decoded.shape == (360, 640, 3)
+    b, g, r = map(int, decoded[1, 200])
+    assert g > 180 and g > b+80 and g > r+80

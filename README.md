@@ -418,3 +418,15 @@ python scripts/validate_trajectory_video.py \
 
 The output includes `zoom-preview.jpg` and a 60-frame `alert-history.mp4` in
 addition to the validation measurements and annotated full video.
+
+
+### Alert pane focus
+
+Telegram videos show the camera grid in the top half and the triggering pane
+expanded into the bottom half, doubling video height. The highest-scoring pane
+at the alert moment stays selected throughout the historical clip. Square grids
+such as 4×4 fill the lower half; other aspect ratios preserve the image with padding.
+The live web preview remains grid-only. A green border marks every pane with
+currently qualified person motion, both in the live preview and the video's top
+half. Borders do not depend on debug mode, person zooms, or history drawing.
+Playback remains 1 FPS by default, with no Telegram caption.

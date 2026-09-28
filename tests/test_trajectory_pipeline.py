@@ -257,3 +257,11 @@ def test_preview_candidates_obey_original_confidence_without_requiring_trajector
     pipeline.detectors[0].score = .1
     pipeline.run_inference(frame)
     assert pipeline.preview_boxes == []
+
+
+def test_focus_uses_winning_pane_and_only_qualified_panes_get_borders():
+    pipeline, frame = make_pipeline(rows=4, columns=4, draw_history=False)
+    pipeline._frame_shape = (1080, 1920)
+    pipeline.pane_scores = {0: 0, 5: 1.2, 15: 3.1}
+    assert pipeline.get_confirmed_panes() == [(480, 270, 960, 540), (1440, 810, 1920, 1080)]
+    assert pipeline.get_alert_focus() == (.75, .75, 1., 1.)
