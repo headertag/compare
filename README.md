@@ -430,3 +430,26 @@ The live web preview remains grid-only. A green border marks every pane with
 currently qualified person motion, both in the live preview and the video's top
 half. Borders do not depend on debug mode, person zooms, or history drawing.
 Playback remains 1 FPS by default, with no Telegram caption.
+
+
+### Ignore parts of camera panes
+
+Configure `tracking.masks` to discard detections whose bounding-box centroid
+falls inside an excluded strip. Row and column numbers start at 1. For example:
+
+```yaml
+tracking:
+  rows: 4
+  columns: 4
+  masks:
+    - row: 1
+      column: 2
+      top_percent: 25
+```
+
+This ignores the top quarter of row 1, column 2 before tracking, scoring, and
+person zooms. The camera image stays visible; boxes merely overlapping the strip
+are retained if their centroid is outside it. The lower boundary of a top mask
+is excluded from the mask. Masks also support `bottom_percent`, `left_percent`,
+and `right_percent` (0–100); multiple strips are combined. They apply even when
+trajectory tracking is disabled. Restart the service after configuration changes.

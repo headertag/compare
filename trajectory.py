@@ -4,7 +4,7 @@ Each detector has its own tracker in each pane: ensemble votes must never count
 as extra video frames. Coordinates and history remain local to that pane.
 """
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 import cv2
@@ -14,6 +14,7 @@ from scipy.optimize import linear_sum_assignment
 
 @dataclass(frozen=True)
 class TrackingConfig:
+    masks: list = field(default_factory=list)
     rows: int = 1
     columns: int = 1
     min_movement_frames: int = 0
@@ -61,6 +62,23 @@ class TrackingConfig:
         for name in ('match_iou', 'low_match_iou'):
             if not 0 < getattr(self, name) <= 1:
                 raise ValueError(f'tracking.{name} must be in (0, 1]')
+
+        if not isinstance(self.masks, list):
+            raise ValueError('tracking.masks must be a list')
+        sides = {'top_percent', 'bottom_percent', 'left_percent', 'right_percent'}
+        for mask in self.masks:
+            if not isinstance(mask, dict) or set(mask) - ({'row', 'column'} | sides):
+                raise ValueError('Invalid tracking mask fields')
+            for key, limit in (('row', self.rows), ('column', self.columns)):
+                value = mask.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= limit:
+                    raise ValueError(f'tracking mask {key} must be a 1-based grid position')
+            if not sides.intersection(mask):
+                raise ValueError('tracking mask requires an edge percentage')
+            for key in sides.intersection(mask):
+                value = mask[key]
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
+                    raise ValueError(f'tracking mask {key} must be between 0 and 100')
 
     @property
     def enabled(self):
@@ -313,3 +331,28 @@ def qualify_track(track, config, confidence_threshold, visual_fraction=0.0):
         track.motion_reason = 'qualified'
     track.score_eligible = track.motion_reason == 'qualified'
     return track.score_eligible
+
+
+def centroid_is_masked(box, shape, config):
+    """Ignore edge strips within a 1-based camera pane; leave source pixels intact."""
+    if not config.masks:
+        return False
+    box = np.asarray(box, dtype=float)
+    if box.shape != (4,) or not np.isfinite(box).all():
+        return False
+    h, w = shape[:2]
+    x1, y1, x2, y2 = box
+    cx = (np.clip(x1, 0, w) + np.clip(x2, 0, w)) / 2
+    cy = (np.clip(y1, 0, h) + np.clip(y2, 0, h)) / 2
+    for mask in config.masks:
+        row, col = mask['row']-1, mask['column']-1
+        left, right = col*w//config.columns, (col+1)*w//config.columns
+        top, bottom = row*h//config.rows, (row+1)*h//config.rows
+        if left <= cx < right and top <= cy < bottom:
+            x, y = 100*(cx-left)/(right-left), 100*(cy-top)/(bottom-top)
+            if (y < mask.get('top_percent', 0) or
+                    y >= 100-mask.get('bottom_percent', 0) or
+                    x < mask.get('left_percent', 0) or
+                    x >= 100-mask.get('right_percent', 0)):
+                return True
+    return False

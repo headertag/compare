@@ -88,6 +88,12 @@ dashboard:
 
 # Trajectory evidence is opt-in; use min_movement_frames: 3 for a 3x3 camera wall.
 tracking:
+  # Optional ignored centroid strips; rows/columns are 1-based. Pixels stay visible.
+  masks: []
+  # masks:
+  #   - row: 1
+  #     column: 2
+  #     top_percent: 25 # Also supports bottom_percent, left_percent, right_percent
   rows: 3
   columns: 3
   min_movement_frames: 0 # 0 completely bypasses tracking/grid/boost (legacy behavior)

@@ -274,3 +274,13 @@ def test_broadcaster_pane_border_survives_banner_and_scaling(tmp_path):
     assert decoded.shape == (360, 640, 3)
     b, g, r = map(int, decoded[1, 200])
     assert g > 180 and g > b+80 and g > r+80
+
+
+def test_status_text_does_not_darken_top_background(tmp_path):
+    from streamer import PreviewBroadcaster
+    broadcaster = PreviewBroadcaster()
+    broadcaster.shm_path = str(tmp_path/'preview.jpg')
+    raw = np.full((180, 1280, 3), 180, np.uint8)
+    encoded = broadcaster.update_frame(raw)
+    decoded = cv2.imdecode(np.frombuffer(encoded, np.uint8), 1)
+    assert np.allclose(decoded[32, 1100], (180, 180, 180), atol=2)

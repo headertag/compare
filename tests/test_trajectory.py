@@ -98,3 +98,20 @@ def test_dynamic_widescreen_grid(width, height):
         assert (y1, y2) == (row * height // 3, (row + 1) * height // 3)
         assert abs((x2 - x1) - width / 3) < 1
         assert abs((y2 - y1) - height / 3) < 1
+
+
+def test_centroid_masks_scale_and_only_affect_selected_pane():
+    from trajectory import centroid_is_masked
+    cfg = TrackingConfig(rows=4, columns=4, masks=[{'row': 1, 'column': 2, 'top_percent': 25}])
+    for scale in (1, 2):
+        shape = (1080*scale, 1920*scale)
+        def masked(box): return centroid_is_masked([v*scale for v in box], shape, cfg)
+        assert masked([500, 10, 540, 50])
+        assert not masked([500, 40, 540, 95])  # Exactly at y=67.5 boundary
+        assert not masked([500, 50, 540, 130])  # Overlaps but centroid outside
+        assert not masked([10, 10, 50, 50])
+        assert not masked([1000, 10, 1040, 50])
+    for invalid in ({'row': 0, 'column': 2, 'top_percent': 25},
+                    {'row': 1, 'column': 5, 'top_percent': 25},
+                    {'row': 1, 'column': 2, 'top_percent': 101}):
+        with pytest.raises(ValueError): TrackingConfig(rows=4, columns=4, masks=[invalid])

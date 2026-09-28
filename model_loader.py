@@ -7,7 +7,7 @@ import time
 import math
 from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
-from trajectory import TrackingConfig, ByteTracker, VisualMotion, qualify_track, pane_bounds
+from trajectory import TrackingConfig, ByteTracker, VisualMotion, qualify_track, pane_bounds, centroid_is_masked
 from PIL import Image
 from transformers import (
     DetrImageProcessor,
@@ -333,7 +333,7 @@ class ModelPipeline:
         scores_by_pane = {}
 
         def run_detector(detector):
-            detector.collect_all = cfg.enabled
+            detector.collect_all = cfg.enabled or bool(cfg.masks)
             detector.candidate_threshold = detector.confidence_threshold
             scores, boxes = [], []
             started = time.perf_counter()
@@ -342,6 +342,17 @@ class ModelPipeline:
                 debug_print(f"[MODEL] name={detector.key} elapsed_ms={(time.perf_counter()-started)*1000:.1f} "
                             f"threshold={detector.confidence_threshold} weight={detector.weight} "
                             f"detections={[(model, list(box), score / detector.weight if detector.weight > 0 else None) for score, (box, model) in zip(scores, boxes)]}")
+            if cfg.masks:
+                accepted = []
+                for score, entry in zip(scores, boxes):
+                    if centroid_is_masked(entry[0], img.shape, cfg):
+                        debug_print(f"[EXCLUSION] model={detector.key} ignored centroid box={list(entry[0])}")
+                    else:
+                        accepted.append((score, entry))
+                if not cfg.enabled:
+                    accepted = accepted[:1]
+                scores = [score for score, _ in accepted]
+                boxes = [entry for _, entry in accepted]
             return detector, scores, boxes
 
         # Exactly one full-frame inference per model. Panes only partition detections.

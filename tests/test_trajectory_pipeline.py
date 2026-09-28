@@ -265,3 +265,17 @@ def test_focus_uses_winning_pane_and_only_qualified_panes_get_borders():
     pipeline.pane_scores = {0: 0, 5: 1.2, 15: 3.1}
     assert pipeline.get_confirmed_panes() == [(480, 270, 960, 540), (1440, 810, 1920, 1080)]
     assert pipeline.get_alert_focus() == (.75, .75, 1., 1.)
+
+
+@pytest.mark.parametrize('minimum', [0, 2])
+def test_masks_filter_before_preview_and_tracking(minimum):
+    pipeline, frame = make_pipeline(min_movement_frames=minimum,
+                                   masks=[{'row': 1, 'column': 2, 'top_percent': 50}])
+    pipeline.detectors[0].panes = {1, 2}
+    scores, boxes = pipeline.run_inference(frame)
+    assert all(box[0][0] >= 200 for box in pipeline.preview_boxes)
+    assert len(pipeline.preview_boxes) == 1
+    if minimum:
+        assert not pipeline.trackers[(1, 'fake')].tracks
+    else:
+        assert len(boxes) == 1 and boxes[0][0][0] >= 200

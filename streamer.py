@@ -80,12 +80,7 @@ class PreviewBroadcaster:
                 cv2.putText(preview_img, label, (startX, max(startY - 6, 16)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 1)
 
-        # Draw status overlay banner at top
-        banner_h = 36
-        overlay = preview_img.copy()
-        cv2.rectangle(overlay, (0, 0), (w, banner_h), (18, 18, 18), -1)
-        cv2.addWeighted(overlay, 0.75, preview_img, 0.25, 0, preview_img)
-
+        # Draw status text directly over the image, without a background bar.
         timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
         status_color = color_red if is_alert else color_green
         alert_status = "⚠️ ALERT TRIGGERED" if is_alert else "LIVE MONITOR"
