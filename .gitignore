@@ -32,3 +32,5 @@ preview.jpg
 # old versions
 compare4.py
 compare3*
+
+.runtime/

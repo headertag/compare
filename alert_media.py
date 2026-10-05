@@ -143,6 +143,7 @@ class HistoryFrame:
     jpeg: bytes
     timestamp: float
     focus_box: tuple | None = None  # Normalized triggering pane, fixed for the clip.
+    person_centroids: tuple | None = None
 
 
 class AlertHistory:
@@ -152,7 +153,7 @@ class AlertHistory:
         self.size_bytes = 0
         self.source = None
 
-    def append(self, jpeg, timestamp, source, *, has_person=True):
+    def append(self, jpeg, timestamp, source, *, has_person=True, person_centroids=None):
         if source != self.source:
             self.frames.clear()
             self.size_bytes = 0
@@ -160,7 +161,7 @@ class AlertHistory:
         if not jpeg:
             return
         # Empty observations still age out old detections within the rolling window.
-        frame = HistoryFrame(bytes(jpeg) if has_person else b'', timestamp)
+        frame = HistoryFrame(bytes(jpeg) if has_person else b'', timestamp, person_centroids=person_centroids)
         self.frames.append(frame)
         self.size_bytes += len(frame.jpeg)
         while self.frames and (len(self.frames) > self.config.history_frames or
@@ -169,7 +170,10 @@ class AlertHistory:
 
     def snapshot(self, focus_box=None):
         return tuple(replace(frame, focus_box=focus_box) if focus_box is not None else frame
-                     for frame in self.frames if frame.jpeg)
+                     for frame in self.frames if frame.jpeg and
+                     (focus_box is None or frame.person_centroids is None or
+                      any(focus_box[0] <= x < focus_box[2] and focus_box[1] <= y < focus_box[3]
+                          for x, y in frame.person_centroids)))
 
 
 def encode_alert_video(frames, path, fps):

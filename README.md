@@ -453,3 +453,41 @@ are retained if their centroid is outside it. The lower boundary of a top mask
 is excluded from the mask. Masks also support `bottom_percent`, `left_percent`,
 and `right_percent` (0–100); multiple strips are combined. They apply even when
 trajectory tracking is disabled. Restart the service after configuration changes.
+
+
+### Proactive Telegram health monitoring
+
+`main.py` now writes `.runtime/health.json` with inference progress, loaded models,
+raw-pane change observations, detection counts and alert-worker state. A compact
+health summary and alert queue/delivery events remain in the journal even when
+verbose debug mode is off. Successful queuing is recorded separately from delivery.
+
+Install the independent checker so it can report a stopped/hung detector:
+
+```bash
+# Review User, WorkingDirectory and ExecStart in camera-health.service first.
+sudo cp camera-health.service camera-health.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now camera-health.timer
+venv/bin/python scripts/check_camera_health.py --dry-run
+venv/bin/python scripts/check_camera_health.py --test
+```
+
+The checker uses existing Telegram credentials and recipients. No extra token is
+needed. It reports stale inference/heartbeat, missing models, stalled media work,
+video/upload errors, apparently unchanged panes, and extended detection inactivity.
+Configure thresholds under `health` in the example YAML. `ignored_panes` uses
+1-based row-major numbering; exclude intentionally unused channels. Quiet scenes
+can also look unchanged, so pane and inactivity warnings are advisories, not proof
+of camera failure. Snapshot comparison tolerates small capture/compression noise.
+Warnings are sent on state changes and repeated hourly by default; resolved checks
+produce a recovery notification. Each recipient retries independently on failure.
+
+The checker runs on the Jetson: power loss or a complete network/Telegram outage
+cannot be reported through that same machine/connection until connectivity returns.
+An external monitor is required to cover those outages. This does not prove that
+every person will be detected or automatically change detection thresholds.
+
+Alert videos now retain only history frames containing an accepted detection in
+the selected triggering pane. Detections in another camera no longer add empty
+focus frames to that pane's retrospective clip.

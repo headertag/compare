@@ -1,0 +1,10 @@
+[Unit]
+Description=Camera alert independent health check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=march
+WorkingDirectory=/home/march/compare
+ExecStart=/home/march/compare/venv/bin/python /home/march/compare/scripts/check_camera_health.py
+TimeoutStartSec=100

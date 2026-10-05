@@ -284,3 +284,24 @@ def test_status_text_does_not_darken_top_background(tmp_path):
     encoded = broadcaster.update_frame(raw)
     decoded = cv2.imdecode(np.frombuffer(encoded, np.uint8), 1)
     assert np.allclose(decoded[32, 1100], (180, 180, 180), atol=2)
+
+
+def test_focus_history_excludes_people_in_other_panes():
+    history = AlertHistory(MediaConfig())
+    history.append(jpeg(), 1, 'grid', person_centroids=((.1, .1),))
+    history.append(jpeg(), 2, 'grid', person_centroids=((.9, .9),))
+    history.append(jpeg(), 3, 'grid', person_centroids=((.1, .1), (.9, .9)))
+    snapshot = history.snapshot((.75, .75, 1., 1.))
+    assert [f.timestamp for f in snapshot] == [2, 3]
+    assert [f.timestamp for f in history.snapshot()] == [1, 2, 3]
+
+
+def test_sender_reports_encoding_failure_even_when_photo_succeeds():
+    sender = sender_without_thread(MagicMock())
+    sender.health = MagicMock()
+    with patch('alert_media.encode_alert_video', side_effect=RuntimeError('no encoder')):
+        sender.send_snapshot((HistoryFrame(jpeg(), 0),))
+    status = sender.health.update.call_args.kwargs
+    assert status['media_error'] == 'Video encoding failed: RuntimeError'
+    assert status['last_delivery_recipients'] == 2
+    assert status['last_delivery_at'] > 0

@@ -126,3 +126,16 @@ alert_media:
   history_frames: 60 # Last processed frames, including the alert-triggering frame
   history_max_mb: 64 # Compressed JPEG buffer; oldest frames are evicted if needed
   playback_fps: 1 # One second per retained person frame; empty frames omitted
+
+
+# Independent Telegram health notifications (install camera-health.timer).
+# These checks remain enabled when alert_media.debug_mode is false.
+health:
+  enabled: true
+  stale_seconds: 120 # No completed inference frames / heartbeat
+  startup_grace_seconds: 180
+  media_timeout_seconds: 180 # Encoding/upload stalled
+  pane_stale_seconds: 600 # Apparently unchanged pane; may also be a quiet scene
+  ignored_panes: [] # 1-based row-major pane numbers; exclude unused/blank channels
+  no_detection_seconds: 21600 # 6 hours; 0 disables the inactivity advisory
+  repeat_seconds: 3600 # Repeat persistent warnings at most hourly; recovery is immediate

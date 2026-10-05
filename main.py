@@ -17,7 +17,10 @@ from config import (
     ALERT_MEDIA_CONFIG,
     DEBUG_MODE,
     debug_print,
+    config,
+    MODELS_CONFIG,
 )
+from health import RuntimeHealth
 from camera import get_camera_manager
 from alerts import initialize_bot, AlertMediaSender
 from alert_media import MediaConfig, AlertHistory, draw_person_zoom
@@ -28,6 +31,8 @@ def main(frame_callback=None):
     """
     Main function to run the object detection and alerting system.
     """
+    health = RuntimeHealth(config.get('health', {}),
+                           [key for key, value in MODELS_CONFIG.items() if value.get('enabled', True)])
     # Start live preview HTTP server (port 8080)
     start_preview_server(host="0.0.0.0", port=8080)
     broadcaster = get_broadcaster()
@@ -39,10 +44,12 @@ def main(frame_callback=None):
     # Get dynamic model pipeline
     pipeline = get_model_pipeline()
 
+    health.update(models=[d.key for d in pipeline.detectors], device=str(pipeline.device))
+
     media = MediaConfig(**{"history_frames": pipeline.tracking_config.history_frames, **ALERT_MEDIA_CONFIG})
     history = AlertHistory(media)
     bot = initialize_bot()
-    sender = AlertMediaSender(bot, media)
+    sender = AlertMediaSender(bot, media, health=health)
     last_alert = 0
 
     # Give camera time to warm up
@@ -60,6 +67,8 @@ def main(frame_callback=None):
 
             # Run inference dynamically across all enabled models in pipeline
             results, multi_box = pipeline.run_inference(img, execution_mode=EXECUTION_MODE)
+
+            health.frame(img, pipeline, results)
 
             # Explain alert qualification without logging images or credentials.
             if DEBUG_MODE:
@@ -82,7 +91,10 @@ def main(frame_callback=None):
                 multi_box=multi_box, model_colors=pipeline.get_model_colors(),
                 confirmed_panes=pipeline.get_confirmed_panes())
             history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]),
-                           has_person=bool(pipeline.preview_boxes))
+                           has_person=bool(pipeline.preview_boxes),
+                           person_centroids=tuple(((max(0, min(img.shape[1], b[0])) + max(0, min(img.shape[1], b[2])))/(2*img.shape[1]),
+                                                   (max(0, min(img.shape[0], b[1])) + max(0, min(img.shape[0], b[3])))/(2*img.shape[0]))
+                                                  for b, _, _ in pipeline.preview_boxes))
 
             if DEBUG_MODE:
                 elapsed = datetime.now().timestamp() - last_alert
@@ -103,7 +115,8 @@ def main(frame_callback=None):
                     if time_delta / MIN_ALERT_INTERVAL < ALERT_COOLDOWN_THRESHOLD:
                         time.sleep(ALERT_COOLDOWN)
                     elif jpeg is not None and sender.submit(history.snapshot(pipeline.get_alert_focus())):
-                        debug_print(f"Alert queued. Score: {sum(results)}")
+                        health.update(last_alert_queued_at=time.time(), alert_focus=pipeline.get_alert_focus())
+                        print(f"Alert queued. Score: {sum(results):.3f}; focus={pipeline.get_alert_focus()}", flush=True)
                         last_alert = current_epoch
                         torch.manual_seed(random.randint(1, 3000000))
 
@@ -117,7 +130,9 @@ def main(frame_callback=None):
     except KeyboardInterrupt:
         print("Program interrupted by user.")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        health.update(fatal_error=type(e).__name__)
+        print(f"An error occurred: {type(e).__name__}", flush=True)
+        raise
     finally:
         # Stop camera (only releases if no other consumers)
         camera.stop()

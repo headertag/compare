@@ -1,3 +1,4 @@
+import time
 import telepot
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS, debug_print
 
@@ -18,9 +19,10 @@ def send_alert(bot, image_path='ALERT.jpg'):
 
 class AlertMediaSender:
     """One active encoding/upload and one queued snapshot; never blocks inference."""
-    def __init__(self, bot, media_config, chat_ids=None):
+    def __init__(self, bot, media_config, chat_ids=None, health=None):
         import queue
         import threading
+        self.health = health
         self.bot = bot
         self.config = media_config
         self.chat_ids = list(TELEGRAM_CHAT_IDS if chat_ids is None else chat_ids)
@@ -44,11 +46,18 @@ class AlertMediaSender:
         while True:
             frames = self.queue.get()
             try:
+                self._health(media_busy_since=time.time())
                 self.send_snapshot(frames)
             except Exception as exc:
-                print(f'Alert media failed: {exc}')
+                self._health(media_error='Worker failed: '+type(exc).__name__)
+                print(f'Alert media failed: {type(exc).__name__}', flush=True)
             finally:
+                self._health(media_busy_since=None)
                 self.queue.task_done()
+
+    def _health(self, **values):
+        if getattr(self, "health", None) is not None:
+            self.health.update(**values)
 
     def send_snapshot(self, frames):
         import io
@@ -58,6 +67,8 @@ class AlertMediaSender:
         # Unique files and immutable JPEG bytes avoid concurrent ALERT.jpg races.
         with tempfile.TemporaryDirectory(prefix='compare-alert-') as directory:
             video = Path(directory) / 'trajectory.mp4'
+            failures = []
+            delivered = 0
             have_video = False
             if self.config.video_enabled and frames:
                 try:
@@ -65,20 +76,31 @@ class AlertMediaSender:
                     encode_alert_video(frames, video, self.config.playback_fps)
                     have_video = True
                 except Exception as exc:
-                    print(f'Video encoding failed; using magnified snapshot: {exc}')
+                    failures.append('Video encoding failed: '+type(exc).__name__)
+                    print(f'Video encoding failed; using magnified snapshot: {type(exc).__name__}', flush=True)
             for chat_id in self.chat_ids:
                 try:
                     if have_video:
                         try:
                             with video.open('rb') as clip:
                                 self.bot.sendVideo(chat_id, clip, supports_streaming=True)
-                            debug_print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.')
+                            delivered += 1
+                            print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.', flush=True)
                             continue
                         except Exception as exc:
-                            print(f'Video upload failed for {chat_id}; using snapshot: {exc}')
+                            failures.append('Video upload failed: '+type(exc).__name__)
+                            print(f'Video upload failed; using snapshot: {type(exc).__name__}', flush=True)
                     image = io.BytesIO(frames[-1].jpeg)
                     image.name = 'person-alert.jpg'
                     self.bot.sendPhoto(chat_id, image)
-                    debug_print('[MEDIA] photo delivered')
+                    delivered += 1
+                    print('[MEDIA] photo delivered', flush=True)
                 except Exception as exc:
-                    print(f'Failed to send alert to {chat_id}: {exc}')
+                    failures.append('Alert delivery failed: '+type(exc).__name__)
+                    print(f'Alert delivery failed: {type(exc).__name__}', flush=True)
+
+            status = {'media_error': '; '.join(sorted(set(failures))) or None,
+                      'last_delivery_recipients': delivered, 'last_clip_frames': len(frames)}
+            if delivered:
+                status['last_delivery_at'] = time.time()
+            self._health(**status)
