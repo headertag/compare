@@ -1,5 +1,6 @@
 """Small, credential-free runtime heartbeat for the independent health checker."""
 import json
+from collections import Counter
 import os
 import threading
 import time
@@ -58,6 +59,10 @@ class RuntimeHealth:
             self.state['frames'] += 1
             self.state['score'] = float(sum(scores))
             self.state['detections'] = len(pipeline.preview_boxes)
+            reasons = Counter(track.motion_reason
+                              for tracker in getattr(pipeline, 'trackers', {}).values()
+                              for track in tracker.tracks if track.missed == 0)
+            self.state['qualification_reasons'] = dict(reasons)
             if pipeline.preview_boxes:
                 self.state['last_detection_at'] = now
                 self.state['detection_frames'] += 1
@@ -90,7 +95,8 @@ class RuntimeHealth:
             if now-self.last_summary >= 60:
                 print(f"[HEALTH] frames={self.state['frames']} detection_frames={self.state['detection_frames']} "
                       f"qualified_frames={self.state['qualified_frames']} score={self.state['score']:.3f} "
-                      f"models={self.state['models']} last_delivery={self.state['last_delivery_at']}", flush=True)
+                      f"models={self.state['models']} reasons={self.state['qualification_reasons']} "
+                      f"last_delivery={self.state['last_delivery_at']}", flush=True)
                 self.last_summary = now
 
 

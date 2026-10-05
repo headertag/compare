@@ -94,3 +94,30 @@ def test_checker_allows_new_service_to_import_before_first_heartbeat():
     assert apply_service_state({'heartbeat': 'old'}, {'pid': 122}, status, 1005, 180) == {}
     status['ActiveState'] = 'failed'
     assert 'service' in apply_service_state({}, None, status, 1005, 180)
+
+
+def test_checker_retries_only_recipient_whose_delivery_failed(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    import time
+    from pathlib import Path
+    import yaml
+    script = Path(__file__).resolve().parents[1]/'scripts/check_camera_health.py'
+    spec = importlib.util.spec_from_file_location('check_camera_health_test', script)
+    module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path/'config.yaml').write_text(yaml.safe_dump({'telegram': {'token': 'secret', 'chat_ids': [1, 2]}}))
+    runtime = tmp_path/'.runtime';runtime.mkdir()
+    current = state(time.time());current.update(pid=1, media_error='Upload failed')
+    (runtime/'health.json').write_text(json.dumps(current))
+    monkeypatch.setattr(sys, 'argv', ['check_camera_health.py'])
+    monkeypatch.setattr(module.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0,
+        stdout='ActiveState=active\nMainPID=1\nActiveEnterTimestampMonotonic=1\n'))
+    first = MagicMock(side_effect=[None, RuntimeError('offline')])
+    monkeypatch.setattr(module, 'send_message', first)
+    module.main()
+    assert set(json.loads((runtime/'health-notifications.json').read_text())) == {'1'}
+    second = MagicMock();monkeypatch.setattr(module, 'send_message', second)
+    module.main()
+    assert second.call_count == 1 and second.call_args.args[1] == 2
+    assert set(json.loads((runtime/'health-notifications.json').read_text())) == {'1', '2'}
