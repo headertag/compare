@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from health import health_issues, notification_plan, validate_health_settings
+from health import health_issues, notification_plan, validate_health_settings, apply_service_state
 
 
 def send_message(token, chat, text):
@@ -37,16 +37,25 @@ def main():
     runtime = Path('.runtime'); runtime.mkdir(exist_ok=True)
     with (runtime/'health-check.lock').open('w') as lock:
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError: return
+        except BlockingIOError:
+            if args.test or args.dry_run:
+                raise SystemExit("Health check already running; retry shortly.")
+            return
         try: state = json.loads((runtime/'health.json').read_text())
         except (OSError, ValueError): state = None
         now = time.time()
         issues = health_issues(state, settings, now)
         try:
-            result = subprocess.run(['systemctl', 'is-active', 'camera-alert.service'],
+            result = subprocess.run(['systemctl', 'show', 'camera-alert.service',
+                                     '-p', 'ActiveState', '-p', 'MainPID',
+                                     '-p', 'ActiveEnterTimestampMonotonic'],
                                     capture_output=True, text=True, timeout=5)
             if result.returncode:
-                issues['service'] = 'camera-alert.service is not active.'
+                issues['service_check'] = 'Unable to query the camera service state.'
+            else:
+                status = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+                issues = apply_service_state(issues, state, status, time.monotonic(),
+                                             settings.get('startup_grace_seconds', 180))
         except (OSError, subprocess.TimeoutExpired):
             issues['service_check'] = 'Unable to query the camera service state.'
         if args.dry_run:

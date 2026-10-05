@@ -84,3 +84,13 @@ def test_media_success_clears_previous_health_failure():
         sender.send_snapshot((HistoryFrame(jpeg(), 0),))
     status = sender.health.update.call_args.kwargs
     assert status['media_error'] is None and status['last_delivery_recipients'] == 2
+
+
+def test_checker_allows_new_service_to_import_before_first_heartbeat():
+    from health import apply_service_state
+    status = {'ActiveState': 'active', 'MainPID': '123', 'ActiveEnterTimestampMonotonic': '1000000000'}
+    assert apply_service_state({'heartbeat': 'missing'}, None, status, 1005, 180) == {}
+    assert 'heartbeat' in apply_service_state({'heartbeat': 'missing'}, None, status, 1200, 180)
+    assert apply_service_state({'heartbeat': 'old'}, {'pid': 122}, status, 1005, 180) == {}
+    status['ActiveState'] = 'failed'
+    assert 'service' in apply_service_state({}, None, status, 1005, 180)

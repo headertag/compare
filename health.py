@@ -144,3 +144,17 @@ def notification_plan(issues, previous, now, repeat_seconds):
     if resolved:
         parts.append('Recovered checks: '+', '.join(sorted(resolved)))
     return '\n\n'.join(parts) or None
+
+
+def apply_service_state(issues, state, status, now_monotonic, grace):
+    """Allow a new service process to import models before its first heartbeat."""
+    issues = dict(issues)
+    if status.get('ActiveState') != 'active':
+        issues['service'] = 'camera-alert.service is not active.'
+    else:
+        pid = int(status.get('MainPID', 0))
+        started = int(status.get('ActiveEnterTimestampMonotonic', 0)) / 1_000_000
+        new_process = not state or state.get('pid') != pid
+        if new_process and started > 0 and now_monotonic-started < grace:
+            return {}
+    return issues
