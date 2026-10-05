@@ -106,7 +106,7 @@ def test_checker_retries_only_recipient_whose_delivery_failed(tmp_path, monkeypa
     spec = importlib.util.spec_from_file_location('check_camera_health_test', script)
     module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     monkeypatch.chdir(tmp_path)
-    (tmp_path/'config.yaml').write_text(yaml.safe_dump({'telegram': {'token': 'secret', 'chat_ids': [1, 2]}}))
+    (tmp_path/'config.yaml').write_text(yaml.safe_dump({'health': {'enabled': True}, 'telegram': {'token': 'secret', 'chat_ids': [1, 2]}}))
     runtime = tmp_path/'.runtime';runtime.mkdir()
     current = state(time.time());current.update(pid=1, media_error='Upload failed')
     (runtime/'health.json').write_text(json.dumps(current))

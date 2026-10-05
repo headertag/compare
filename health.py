@@ -11,7 +11,7 @@ def validate_health_settings(settings):
     if not isinstance(settings, dict):
         raise ValueError('health must be a mapping')
     import math
-    if not isinstance(settings.get('enabled', True), bool):
+    if not isinstance(settings.get('enabled', False), bool):
         raise ValueError('health.enabled must be boolean')
     for key in ('stale_seconds', 'startup_grace_seconds', 'media_timeout_seconds',
                 'pane_stale_seconds', 'no_detection_seconds', 'repeat_seconds'):

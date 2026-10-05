@@ -32,7 +32,7 @@ def main():
     args = parser.parse_args()
     cfg = yaml.safe_load(Path('config.yaml').read_text())
     settings = validate_health_settings(cfg.get('health', {}))
-    if not settings.get('enabled', True):
+    if not settings.get('enabled', False):
         return
     runtime = Path('.runtime'); runtime.mkdir(exist_ok=True)
     with (runtime/'health-check.lock').open('w') as lock:

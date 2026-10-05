@@ -462,7 +462,11 @@ raw-pane change observations, detection counts and alert-worker state. A compact
 health summary and alert queue/delivery events remain in the journal even when
 verbose debug mode is off. Successful queuing is recorded separately from delivery.
 
-Install the independent checker so it can report a stopped/hung detector:
+Health notifications are disabled by default. Local diagnostic logging continues.
+Only opt in with `health.enabled: true` after validating the failure conditions
+you want reported; quiet scenes and absent detections do not confirm a failure.
+
+To install the optional checker:
 
 ```bash
 # Review User, WorkingDirectory and ExecStart in camera-health.service first.
