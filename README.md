@@ -356,7 +356,7 @@ track matching/motion qualification, per-pane scores, alert timing decisions,
 and media encoding/delivery. Errors remain visible when disabled. Restart the
 service after changing the setting. Detection, zooms, and trajectory rules are unchanged.
 
-Telegram alerts now send a playable H.264 MP4 containing the **person-containing frames from the last 60 processed
+Telegram alerts now send a playable H.264 MP4 containing the **motion-qualified person frames from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms
 and trajectory overlays. This is retrospective; the application does not wait
 for another 60 future frames before sending. The old trajectory history held
@@ -492,6 +492,19 @@ cannot be reported through that same machine/connection until connectivity retur
 An external monitor is required to cover those outages. This does not prove that
 every person will be detected or automatically change detection thresholds.
 
-Alert videos now retain only history frames containing an accepted detection in
-the selected triggering pane. Detections in another camera no longer add empty
-focus frames to that pane's retrospective clip.
+With tracking enabled, alert videos retain only frames containing a motion-qualified
+person in the selected pane. Unqualified or merely flickering candidate boxes do
+not fill the clip. With tracking disabled, accepted person detections are retained.
+
+Qualified events from every pane are saved while the global
+`alerting.min_interval_seconds` runs. An event can therefore arrive after the
+person leaves; its saved clip shows the event that actually qualified. The
+`cooldown_threshold_multiplier` extends this interval when greater than one;
+`cooldown_seconds` no longer pauses inference. Repeated events from a pane already
+served cannot take priority over a waiting, unserved pane. Simultaneous new events
+start with the highest score. One pending clip per pane is coalesced, with a shared
+additional memory budget equal to `alert_media.history_max_mb`; older clip frames
+are trimmed first. Pending events clear on restart or a source/tracking reset.
+
+Offline regression fixtures and reproduction instructions are in
+[the synthetic pane investigation](docs/testing/synthetic-pane-forensics.md).

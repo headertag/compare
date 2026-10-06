@@ -21,6 +21,8 @@ from config import (
     MODELS_CONFIG,
 )
 from health import RuntimeHealth
+from alert_dispatch import AlertDispatcher
+from trajectory import pane_bounds
 from camera import get_camera_manager
 from alerts import initialize_bot, AlertMediaSender
 from alert_media import MediaConfig, AlertHistory, draw_person_zoom
@@ -50,7 +52,8 @@ def main(frame_callback=None):
     history = AlertHistory(media)
     bot = initialize_bot()
     sender = AlertMediaSender(bot, media, health=health)
-    last_alert = 0
+    dispatcher = AlertDispatcher(MIN_ALERT_INTERVAL, ALERT_COOLDOWN_THRESHOLD,
+                                 int(media.history_max_mb * 1024 * 1024))
 
     # Give camera time to warm up
     time.sleep(2)
@@ -90,35 +93,34 @@ def main(frame_callback=None):
                 display, results=results, threshold=ALERT_SENSITIVITY_THRESHOLD,
                 multi_box=multi_box, model_colors=pipeline.get_model_colors(),
                 confirmed_panes=pipeline.get_confirmed_panes())
-            history.append(jpeg, time.time(), (pipeline.stream_generation, img.shape[:2]),
-                           has_person=bool(pipeline.preview_boxes),
+            source = (pipeline.stream_generation, img.shape[:2])
+            dispatcher.set_source(source)
+            # Tracking clips contain confirmed motion, not unqualified wall candidates.
+            evidence_boxes = multi_box if pipeline.tracking_config.enabled else pipeline.preview_boxes
+            history.append(jpeg, time.time(), source,
+                           has_person=bool(evidence_boxes),
                            person_centroids=tuple(((max(0, min(img.shape[1], b[0])) + max(0, min(img.shape[1], b[2])))/(2*img.shape[1]),
                                                    (max(0, min(img.shape[0], b[1])) + max(0, min(img.shape[0], b[3])))/(2*img.shape[0]))
-                                                  for b, _, _ in pipeline.preview_boxes))
+                                                  for b, *_ in evidence_boxes))
 
-            if DEBUG_MODE:
-                elapsed = datetime.now().timestamp() - last_alert
-                ready_after = max(MIN_ALERT_INTERVAL, MIN_ALERT_INTERVAL * ALERT_COOLDOWN_THRESHOLD)
-                reason = ('below score threshold' if sum(results) < ALERT_SENSITIVITY_THRESHOLD
-                          else 'waiting for alert interval' if elapsed <= MIN_ALERT_INTERVAL
-                          else 'cooldown multiplier gate' if elapsed < ready_after
-                          else 'no encoded preview' if jpeg is None else 'eligible to queue')
-                debug_print(f"[ALERT] decision={reason} elapsed_seconds={elapsed:.1f} "
-                            f"interval={MIN_ALERT_INTERVAL} multiplier={ALERT_COOLDOWN_THRESHOLD} "
-                            f"cooldown={ALERT_COOLDOWN} history={len(history.snapshot())} "
-                            f"history_bytes={history.size_bytes} queued={sender.queue.qsize()}")
-
-            if sum(results) >= ALERT_SENSITIVITY_THRESHOLD:
-                current_epoch = datetime.now().timestamp()
-                time_delta = current_epoch - last_alert
-                if time_delta > MIN_ALERT_INTERVAL:
-                    if time_delta / MIN_ALERT_INTERVAL < ALERT_COOLDOWN_THRESHOLD:
-                        time.sleep(ALERT_COOLDOWN)
-                    elif jpeg is not None and sender.submit(history.snapshot(pipeline.get_alert_focus())):
-                        health.update(last_alert_queued_at=time.time(), alert_focus=pipeline.get_alert_focus())
-                        print(f"Alert queued. Score: {sum(results):.3f}; focus={pipeline.get_alert_focus()}", flush=True)
-                        last_alert = current_epoch
-                        torch.manual_seed(random.randint(1, 3000000))
+            if pipeline.tracking_config.enabled:
+                h, w = img.shape[:2]
+                candidates = [(pipeline.pane_scores.get(pane, 0), (x1/w, y1/h, x2/w, y2/h))
+                              for pane, x1, y1, x2, y2 in pane_bounds(img.shape, pipeline.tracking_config)]
+            else:
+                candidates = [(sum(results), (0., 0., 1., 1.))]
+            # Every qualifying pane is retained, including events during the interval.
+            # Highest score wins simultaneous first arrival; waiting panes remain first.
+            for score, focus in sorted(candidates, key=lambda item: item[0], reverse=True):
+                if score >= ALERT_SENSITIVITY_THRESHOLD and score > 0:
+                    dispatcher.offer(focus, score, history.snapshot(focus))
+            event = dispatcher.dispatch(datetime.now().timestamp(), sender)
+            if event is not None:
+                health.update(last_alert_queued_at=time.time(), alert_focus=event.focus)
+                print(f"Alert queued. Score: {event.score:.3f}; focus={event.focus}", flush=True)
+                torch.manual_seed(random.randint(1, 3000000))
+            debug_print(f"[ALERT] pending_panes={len(dispatcher.pending)} "
+                        f"pending_bytes={dispatcher.size_bytes} interval={MIN_ALERT_INTERVAL}")
 
             if frame_callback:
                 frame_callback(display)

@@ -5,9 +5,9 @@ telegram:
     - 987654321 # Example chat ID 2
 
 alerting:
-  cooldown_seconds: 120
+  cooldown_seconds: 120 # Legacy compatibility; inference no longer pauses
   cooldown_threshold_multiplier: 2
-  min_interval_seconds: 5
+  min_interval_seconds: 5 # Global send interval; other panes retain pending clips
   sensitivity_threshold: 2.3
 
 camera:
@@ -123,7 +123,7 @@ alert_media:
   zoom_max_pane_fraction: 1.0 # Insets remain inside their original camera pane
   max_zoom_per_pane: 0 # 0 = all distinct accepted detections; set e.g. 3 to limit clutter
   video_enabled: true # Send an H.264 MP4 instead of a still photo when history exists
-  history_frames: 60 # Last processed frames, including the alert-triggering frame
+  history_frames: 60 # Retain motion-qualified frames within this processed-frame window
   history_max_mb: 64 # Compressed JPEG buffer; oldest frames are evicted if needed
   playback_fps: 1 # One second per retained person frame; empty frames omitted
 
