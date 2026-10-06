@@ -8,6 +8,7 @@ class PendingAlert:
     focus: tuple
     score: float
     frames: tuple
+    event_ids: frozenset = frozenset()
 
 
 class AlertDispatcher:
@@ -19,19 +20,31 @@ class AlertDispatcher:
         self.last_sent = None
         self.source = None
         self.served = {}
+        self.submitted_ids = set()
 
     def set_source(self, source):
         if self.source != source:
             self.pending.clear()
             self.served.clear()
+            self.submitted_ids.clear()
             self.source = source
 
-    def offer(self, focus, score, frames):
+    def retain_active_ids(self, active_ids):
+        # Keep deduplication bounded while preserving identities in pending clips.
+        pending_ids = {i for event in self.pending.values() for i in event.event_ids}
+        self.submitted_ids.intersection_update(set(active_ids) | pending_ids)
+
+    def offer(self, focus, score, frames, event_ids=None):
         if not frames:
             return
+        ids = frozenset(event_ids or ())
+        if event_ids is not None and not ids.difference(self.submitted_ids):
+            return
         key = tuple(focus)
+        if key in self.pending:
+            ids = ids | self.pending[key].event_ids
         # Replacement preserves arrival order: persistent panes cannot jump ahead.
-        self.pending[key] = PendingAlert(key, score, tuple(frames))
+        self.pending[key] = PendingAlert(key, score, tuple(frames), ids)
         self._bound_memory()
 
     @property
@@ -46,7 +59,7 @@ class AlertDispatcher:
             key = max(self.pending, key=lambda k: len(self.pending[k].frames))
             event = self.pending[key]
             if len(event.frames) > 1:
-                self.pending[key] = PendingAlert(key, event.score, event.frames[1:])
+                self.pending[key] = PendingAlert(key, event.score, event.frames[1:], event.event_ids)
             else:
                 self.pending.pop(key)
                 print('Pending alert dropped: configured media memory budget too small.', flush=True)
@@ -66,4 +79,5 @@ class AlertDispatcher:
         self.pending.pop(key)
         self.last_sent = now
         self.served[key] = now
+        self.submitted_ids.update(event.event_ids)
         return event

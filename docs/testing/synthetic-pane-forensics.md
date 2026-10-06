@@ -75,3 +75,12 @@ Stronger visual-motion discrimination requires additional adversarial fixtures
 
 These experiments establish software mechanisms under controlled inputs. They
 cannot retroactively identify the exact observations in an unrecorded incident.
+
+## Delayed duplicate regression
+
+The dispatcher records successfully queued track identities. More qualified
+frames for those identities cannot re-create a pending event. New tracks remain
+eligible, and sender queue rejection does not mark tracks submitted. Identity
+memory is pruned with active/lost tracker state and cleared on source changes.
+The offline main-loop regression asserts that the already-sent wall track does
+not remain pending while the as-yet-unreported person does.

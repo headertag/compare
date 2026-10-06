@@ -41,3 +41,33 @@ def test_multiplier_extends_interval_without_blocking_or_dividing_by_zero():
     assert d.dispatch(20,sender).focus==(2,)
     immediate=AlertDispatcher(0);immediate.offer((1,),9,frame())
     assert immediate.dispatch(0,sender) is not None
+
+
+def test_submitted_track_cannot_requeue_a_delayed_duplicate():
+    d=AlertDispatcher(120);sender=Mock();sender.submit.return_value=True
+    focus=(0,0,1,1);identity=(0,'yolo',1)
+    d.offer(focus,9,frame(),[identity]);assert d.dispatch(0,sender)
+    for now in (1,2,60,119,121,240):
+        d.offer(focus,10,frame(b'new pixels'),[identity])
+        assert d.dispatch(now,sender) is None
+    assert not d.pending and sender.submit.call_count==1
+
+
+def test_new_track_same_pane_is_retained_while_old_track_does_not_overwrite_it():
+    d=AlertDispatcher(120);sender=Mock();sender.submit.return_value=True
+    focus=(0,0,1,1);old=(0,'yolo',1);new=(0,'yolo',2)
+    d.offer(focus,9,frame(),[old]);d.dispatch(0,sender)
+    d.offer(focus,10,frame(b'new person'),[new])
+    d.offer(focus,11,frame(b'old person'),[old])
+    assert d.dispatch(121,sender).frames[0].jpeg==b'new person'
+    d.offer(focus,12,frame(),[new]);assert not d.pending
+
+
+def test_failed_submit_does_not_consume_track_and_dedup_memory_is_bounded():
+    d=AlertDispatcher(120);sender=Mock();sender.submit.return_value=False
+    identity=(0,'yolo',1)
+    d.offer((0,),9,frame(),[identity]);assert not d.dispatch(0,sender)
+    assert not d.submitted_ids
+    sender.submit.return_value=True;assert d.dispatch(1,sender)
+    d.retain_active_ids([identity]);assert identity in d.submitted_ids
+    d.retain_active_ids([]);assert not d.submitted_ids

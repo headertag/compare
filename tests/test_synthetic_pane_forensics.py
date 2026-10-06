@@ -36,6 +36,7 @@ def test_global_interval_retains_other_panes_real_person_event(seed):
     assert bad['submissions'][0]['focus'] == focus(bad['wall_pane'])
     assert control['submissions'][0]['focus'] == focus(control['person_pane'])
     assert focus(bad['person_pane']) in bad['pending_focus']
+    assert focus(bad['wall_pane']) not in bad['pending_focus']
     # All qualified person events land in the global 120s gate after the wall alert.
     wall_time = bad['submissions'][0]['frame']*bad['step_seconds']
     assert all(0 < f['seconds']-wall_time <= 120 for f in qualified)

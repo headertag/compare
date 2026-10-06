@@ -105,19 +105,27 @@ def main(frame_callback=None):
 
             if pipeline.tracking_config.enabled:
                 h, w = img.shape[:2]
-                candidates = [(pipeline.pane_scores.get(pane, 0), (x1/w, y1/h, x2/w, y2/h))
+                dispatcher.retain_active_ids(
+                    (pane, model, track.id)
+                    for (pane, model), tracker in pipeline.trackers.items()
+                    for track in tracker.tracks)
+                candidates = [(pipeline.pane_scores.get(pane, 0), (x1/w, y1/h, x2/w, y2/h),
+                               frozenset((pane, model, track.id)
+                                         for (p, model), tracker in pipeline.trackers.items() if p == pane
+                                         for track in tracker.tracks if track.missed == 0 and track.score_eligible))
                               for pane, x1, y1, x2, y2 in pane_bounds(img.shape, pipeline.tracking_config)]
             else:
-                candidates = [(sum(results), (0., 0., 1., 1.))]
+                candidates = [(sum(results), (0., 0., 1., 1.), None)]
             # Every qualifying pane is retained, including events during the interval.
             # Highest score wins simultaneous first arrival; waiting panes remain first.
-            for score, focus in sorted(candidates, key=lambda item: item[0], reverse=True):
+            for score, focus, event_ids in sorted(candidates, key=lambda item: item[0], reverse=True):
                 if score >= ALERT_SENSITIVITY_THRESHOLD and score > 0:
-                    dispatcher.offer(focus, score, history.snapshot(focus))
+                    dispatcher.offer(focus, score, history.snapshot(focus), event_ids)
             event = dispatcher.dispatch(datetime.now().timestamp(), sender)
             if event is not None:
                 health.update(last_alert_queued_at=time.time(), alert_focus=event.focus)
-                print(f"Alert queued. Score: {event.score:.3f}; focus={event.focus}", flush=True)
+                print(f"Alert queued. Score: {event.score:.3f}; focus={event.focus}; "
+                      f"tracks={sorted(event.event_ids)}; clip_frames={len(event.frames)}", flush=True)
                 torch.manual_seed(random.randint(1, 3000000))
             debug_print(f"[ALERT] pending_panes={len(dispatcher.pending)} "
                         f"pending_bytes={dispatcher.size_bytes} interval={MIN_ALERT_INTERVAL}")
