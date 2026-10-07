@@ -105,10 +105,6 @@ def main(frame_callback=None):
 
             if pipeline.tracking_config.enabled:
                 h, w = img.shape[:2]
-                dispatcher.retain_active_ids(
-                    (pane, model, track.id)
-                    for (pane, model), tracker in pipeline.trackers.items()
-                    for track in tracker.tracks)
                 candidates = [(pipeline.pane_scores.get(pane, 0), (x1/w, y1/h, x2/w, y2/h),
                                frozenset((pane, model, track.id)
                                          for (p, model), tracker in pipeline.trackers.items() if p == pane
@@ -116,8 +112,7 @@ def main(frame_callback=None):
                               for pane, x1, y1, x2, y2 in pane_bounds(img.shape, pipeline.tracking_config)]
             else:
                 candidates = [(sum(results), (0., 0., 1., 1.), None)]
-            # Every qualifying pane is retained, including events during the interval.
-            # Highest score wins simultaneous first arrival; waiting panes remain first.
+            # Only current-frame qualifying panes compete. Suppressed events are discarded.
             for score, focus, event_ids in sorted(candidates, key=lambda item: item[0], reverse=True):
                 if score >= ALERT_SENSITIVITY_THRESHOLD and score > 0:
                     dispatcher.offer(focus, score, history.snapshot(focus), event_ids)

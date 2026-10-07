@@ -21,7 +21,7 @@ def test_fixture_is_seeded_twelve_frame_widescreen_grid():
 
 
 @pytest.mark.parametrize('seed', [SEED, 17, 90210])
-def test_global_interval_retains_other_panes_real_person_event(seed):
+def test_global_interval_discards_suppressed_person_event(seed):
     bad = reproduce('wall_then_person',seed)
     control = reproduce('person_only',seed)
     person = str(bad['person_pane'])
@@ -35,7 +35,7 @@ def test_global_interval_retains_other_panes_real_person_event(seed):
     assert len(bad['submissions']) == 1
     assert bad['submissions'][0]['focus'] == focus(bad['wall_pane'])
     assert control['submissions'][0]['focus'] == focus(control['person_pane'])
-    assert focus(bad['person_pane']) in bad['pending_focus']
+    assert not bad['pending_focus']
     assert focus(bad['wall_pane']) not in bad['pending_focus']
     # All qualified person events land in the global 120s gate after the wall alert.
     wall_time = bad['submissions'][0]['frame']*bad['step_seconds']
@@ -73,12 +73,8 @@ def test_unqualified_false_positive_is_excluded_from_history():
                for s in sent['submissions'])
 
 
-def test_main_loop_delivers_saved_person_after_interval_without_new_detection():
+def test_main_loop_does_not_replay_event_after_cooldown_without_fresh_detection():
     result = reproduce('wall_then_person', drain_pending=True)
-    sent = result['submissions']
-    assert len(sent) == 2
-    assert sent[0]['focus'] == focus(result['wall_pane'])
-    assert sent[1]['focus'] == focus(result['person_pane'])
-    assert sent[1]['frame'] > 12  # Person has left; the saved event still delivers.
-    assert sent[1]['clip_frames'] > 0
-    assert (sent[1]['frame']-sent[0]['frame'])*result['step_seconds'] > 120
+    assert len(result['submissions']) == 1
+    assert result['submissions'][0]['focus'] == focus(result['wall_pane'])
+    assert not result['pending_focus']

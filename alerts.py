@@ -18,7 +18,7 @@ def send_alert(bot, image_path='ALERT.jpg'):
 
 
 class AlertMediaSender:
-    """One active encoding/upload and one queued snapshot; never blocks inference."""
+    """One active encoding/upload; busy submissions are discarded without buffering."""
     def __init__(self, bot, media_config, chat_ids=None, health=None):
         import queue
         import threading
@@ -27,18 +27,20 @@ class AlertMediaSender:
         self.config = media_config
         self.chat_ids = list(TELEGRAM_CHAT_IDS if chat_ids is None else chat_ids)
         self.queue = queue.Queue(maxsize=1)
+        self.slot = threading.BoundedSemaphore(1)
         self.worker = threading.Thread(target=self._run, daemon=True)
         self.worker.start()
 
     def submit(self, frames):
         import queue
-        if not frames:
+        if not frames or not self.slot.acquire(blocking=False):
             return False
         try:
             self.queue.put_nowait(tuple(frames))
             debug_print(f"[MEDIA] queued frames={len(frames)} fps={self.config.playback_fps}")
             return True
         except queue.Full:
+            self.slot.release()
             print('Alert media queue busy; inference continues without queuing another clip.')
             return False
 
@@ -53,6 +55,7 @@ class AlertMediaSender:
                 print(f'Alert media failed: {type(exc).__name__}', flush=True)
             finally:
                 self._health(media_busy_since=None)
+                self.slot.release()
                 self.queue.task_done()
 
     def _health(self, **values):

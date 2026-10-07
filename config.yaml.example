@@ -7,7 +7,7 @@ telegram:
 alerting:
   cooldown_seconds: 120 # Legacy compatibility; inference no longer pauses
   cooldown_threshold_multiplier: 2
-  min_interval_seconds: 5 # Global send interval; other panes retain pending clips
+  min_interval_seconds: 5 # Global cooldown; events during it are discarded
   sensitivity_threshold: 2.3
 
 camera:

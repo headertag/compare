@@ -496,19 +496,15 @@ With tracking enabled, alert videos retain only frames containing a motion-quali
 person in the selected pane. Unqualified or merely flickering candidate boxes do
 not fill the clip. With tracking disabled, accepted person detections are retained.
 
-Qualified events from every pane are saved while the global
-`alerting.min_interval_seconds` runs. An event can therefore arrive after the
-person leaves; its saved clip shows the event that actually qualified. The
-`cooldown_threshold_multiplier` extends this interval when greater than one;
-`cooldown_seconds` no longer pauses inference. Repeated events from a pane already
-served cannot take priority over a waiting, unserved pane. Simultaneous new events
-start with the highest score. A motion-qualified track is reported once while its tracking identity exists;
-subsequent frames of that same track cannot create a delayed duplicate. A new
-track can still create an event, including in the same pane. Track IDs are logged
-with queued alerts. With tracking disabled, the interval-based legacy behavior
-is preserved. One pending clip per pane is coalesced, with a shared
-additional memory budget equal to `alert_media.history_max_mb`; older clip frames
-are trimmed first. Pending events clear on restart or a source/tracking reset.
+Alerts use a shared cooldown: the highest-scoring currently qualified pane sends
+immediately when eligible. Events observed during `alerting.min_interval_seconds`
+are discarded, not saved for later. When the interval ends, only a fresh qualifying
+frame can trigger another alert; this can be the same still-active track.
+`cooldown_threshold_multiplier` extends the interval when greater than one.
+`cooldown_seconds` no longer pauses inference. Preview and inference continue.
+The media worker accepts one active clip; while busy it drops new submissions
+rather than building a delayed delivery queue. Encoding and network transfer still
+take time. Clip history remains retrospective, but cannot itself trigger an alert.
 
 Offline regression fixtures and reproduction instructions are in
 [the synthetic pane investigation](docs/testing/synthetic-pane-forensics.md).

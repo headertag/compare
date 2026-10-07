@@ -136,7 +136,7 @@ def test_submission_remains_nonblocking_with_a_busy_encoder():
         try:
             assert sender.submit(frame)
             assert started.wait(2)
-            assert sender.submit(frame)
+            assert not sender.submit(frame)
             assert not sender.submit(frame)  # Bounded queue; returns without waiting
         finally:
             release.set()
