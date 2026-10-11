@@ -69,7 +69,7 @@ def test_unqualified_false_positive_is_excluded_from_history():
     assert not any(f['pane_scores'].get(str(result['wall_pane']),0) for f in result['frames'])
     # With nonuniform lighting plus drift, that same wall can actually be sent.
     sent = reproduce('late_wall_only')
-    assert any(s['focus'] == focus(sent['wall_pane']) and s['clip_frames']==1
+    assert any(s['focus'] == focus(sent['wall_pane']) and s['clip_frames']==12
                for s in sent['submissions'])
 
 
@@ -78,3 +78,10 @@ def test_main_loop_does_not_replay_event_after_cooldown_without_fresh_detection(
     assert len(result['submissions']) == 1
     assert result['submissions'][0]['focus'] == focus(result['wall_pane'])
     assert not result['pending_focus']
+
+
+def test_first_person_alert_includes_its_prequalification_observations():
+    result = reproduce('person_only')
+    first = result['submissions'][0]
+    assert first['frame'] == 5  # No waiting for future frames or delayed notification.
+    assert first['clip_frames'] == 3  # Observed frames 3, 4, 5; qualification at 5.

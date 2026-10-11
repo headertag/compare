@@ -23,3 +23,14 @@ unqualified wall frames are excluded from tracking clips.
 Earlier experiments intentionally retained events across cooldown. That policy
 was rejected by the user and is superseded by this hotfix. Qualified clip history
 is still retrospective, but it never generates an alert without fresh evidence.
+
+## October 11 clip-history regression
+
+The qualified-only history change in e5f2056 discarded the earlier observations
+needed to establish motion. A new alert at first qualification therefore commonly
+encoded one frame. The offline first-person test reproduced this (one frame versus
+three expected) before the fix. History now records observed track identities and
+selects prior observations of only the identities qualified on the trigger frame.
+An encoding test decodes the selected multi-frame MP4. Tests exclude unrelated
+tracks in the same pane, other panes, missed observations and old source history.
+Alert timing, cooldown discard policy, model cutoffs and motion rules are unchanged.

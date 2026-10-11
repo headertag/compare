@@ -198,7 +198,10 @@ def reproduce(case='wall_then_person', seed=SEED, output=None, drain_pending=Fal
     assert detector.calls == total_frames
     wp = metadata['wall_pane']-1
     focus = (wp%4/4, wp//4/4, (wp%4+1)/4, (wp//4+1)/4)
-    wall_clip = histories[0].snapshot(focus)
+    wall_ids = frozenset((pane, model, track.id)
+                         for (pane, model), tracker in pipeline.trackers.items() if pane == wp
+                         for track in tracker.tracks if track.missed == 0 and track.score_eligible)
+    wall_clip = histories[0].snapshot(focus, wall_ids)
     result = dict(case=case, **metadata, step_seconds=step_seconds, interval_seconds=interval_seconds, frames=records,
                   submissions=submissions, wall_history_frames=len(wall_clip),
                   pending_focus=[list(k) for k in dispatchers[0].pending],

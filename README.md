@@ -356,7 +356,7 @@ track matching/motion qualification, per-pane scores, alert timing decisions,
 and media encoding/delivery. Errors remain visible when disabled. Restart the
 service after changing the setting. Detection, zooms, and trajectory rules are unchanged.
 
-Telegram alerts now send a playable H.264 MP4 containing the **motion-qualified person frames from the last 60 processed
+Telegram alerts now send a playable H.264 MP4 containing the **observations of the triggering person tracks from the last 60 processed
 preview frames**, including the frame that triggered the alert, with their zooms
 and trajectory overlays. This is retrospective; the application does not wait
 for another 60 future frames before sending. The old trajectory history held
@@ -492,9 +492,13 @@ cannot be reported through that same machine/connection until connectivity retur
 An external monitor is required to cover those outages. This does not prove that
 every person will be detected or automatically change detection thresholds.
 
-With tracking enabled, alert videos retain only frames containing a motion-qualified
-person in the selected pane. Unqualified or merely flickering candidate boxes do
-not fill the clip. With tracking disabled, accepted person detections are retained.
+With tracking enabled, an alert still requires current motion qualification. Its
+video includes earlier confidence-qualified observations of those same triggering
+track identities in the same pane, including frames before motion qualification.
+This restores trajectory animation without delaying the alert for future frames.
+Unrelated tracks, missed observations and other panes cannot supply clip frames.
+The history remains bounded by `history_frames` and `history_max_mb`. With tracking
+disabled, accepted person detections are retained as before.
 
 Alerts use a shared cooldown: the highest-scoring currently qualified pane sends
 immediately when eligible. Events observed during `alerting.min_interval_seconds`

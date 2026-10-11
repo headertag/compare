@@ -123,7 +123,7 @@ alert_media:
   zoom_max_pane_fraction: 1.0 # Insets remain inside their original camera pane
   max_zoom_per_pane: 0 # 0 = all distinct accepted detections; set e.g. 3 to limit clutter
   video_enabled: true # Send an H.264 MP4 instead of a still photo when history exists
-  history_frames: 60 # Retain motion-qualified frames within this processed-frame window
+  history_frames: 60 # Processed-frame window for observations of triggering tracks
   history_max_mb: 64 # Compressed JPEG buffer; oldest frames are evicted if needed
   playback_fps: 1 # One second per retained person frame; empty frames omitted
 

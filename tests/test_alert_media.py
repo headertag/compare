@@ -305,3 +305,26 @@ def test_sender_reports_encoding_failure_even_when_photo_succeeds():
     assert status['media_error'] == 'Video encoding failed: RuntimeError'
     assert status['last_delivery_recipients'] == 2
     assert status['last_delivery_at'] > 0
+
+
+def test_preroll_is_restricted_to_triggering_track_and_observed_frames(tmp_path):
+    history = AlertHistory(MediaConfig())
+    focus=(0,0,.5,1);person=(0,'yolo',2);wall=(0,'yolo',1);other=(1,'yolo',2)
+    for time, ids, centers in [(0,[wall],[(.2,.5)]),
+                               (1,[person,wall],[(.2,.5)]),
+                               (2,[other],[(.7,.5)]),
+                               (3,[person],[(.2,.5)])]:
+        history.append(jpeg(time),time,'source',track_ids=ids,person_centroids=centers)
+    clip=history.snapshot(focus,[person])
+    assert [f.timestamp for f in clip]==[1,3]
+    output=tmp_path/'preroll.mp4'
+    encode_alert_video(clip,output,1)
+    video=cv2.VideoCapture(str(output))
+    assert video.read()[0] and video.read()[0] and not video.read()[0]
+    video.release()
+    assert history.snapshot(focus,[])==()
+    # Identity-less legacy history must never leak into a tracked selection.
+    history.append(jpeg(),4,'source',person_centroids=[(.2,.5)])
+    assert [f.timestamp for f in history.snapshot(focus,[person])]==[1,3]
+    history.append(jpeg(),5,'new-source',track_ids=[person],person_centroids=[(.2,.5)])
+    assert [f.timestamp for f in history.snapshot(focus,[person])]==[5]

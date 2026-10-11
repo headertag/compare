@@ -95,10 +95,15 @@ def main(frame_callback=None):
                 confirmed_panes=pipeline.get_confirmed_panes())
             source = (pipeline.stream_generation, img.shape[:2])
             dispatcher.set_source(source)
-            # Tracking clips contain confirmed motion, not unqualified wall candidates.
-            evidence_boxes = multi_box if pipeline.tracking_config.enabled else pipeline.preview_boxes
+            # Retain prequalification observations; selection below restricts the
+            # clip to identities that actually qualify on the current frame.
+            observed_ids = (frozenset((pane, model, track.id)
+                            for (pane, model), tracker in pipeline.trackers.items()
+                            for track in tracker.tracks if track.missed == 0)
+                            if pipeline.tracking_config.enabled else None)
+            evidence_boxes = pipeline.preview_boxes
             history.append(jpeg, time.time(), source,
-                           has_person=bool(evidence_boxes),
+                           has_person=bool(evidence_boxes), track_ids=observed_ids,
                            person_centroids=tuple(((max(0, min(img.shape[1], b[0])) + max(0, min(img.shape[1], b[2])))/(2*img.shape[1]),
                                                    (max(0, min(img.shape[0], b[1])) + max(0, min(img.shape[0], b[3])))/(2*img.shape[0]))
                                                   for b, *_ in evidence_boxes))
@@ -115,7 +120,7 @@ def main(frame_callback=None):
             # Only current-frame qualifying panes compete. Suppressed events are discarded.
             for score, focus, event_ids in sorted(candidates, key=lambda item: item[0], reverse=True):
                 if score >= ALERT_SENSITIVITY_THRESHOLD and score > 0:
-                    dispatcher.offer(focus, score, history.snapshot(focus), event_ids)
+                    dispatcher.offer(focus, score, history.snapshot(focus, event_ids), event_ids)
             event = dispatcher.dispatch(datetime.now().timestamp(), sender)
             if event is not None:
                 health.update(last_alert_queued_at=time.time(), alert_focus=event.focus)

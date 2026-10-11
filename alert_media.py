@@ -144,6 +144,7 @@ class HistoryFrame:
     timestamp: float
     focus_box: tuple | None = None  # Normalized triggering pane, fixed for the clip.
     person_centroids: tuple | None = None
+    track_ids: frozenset | None = None
 
 
 class AlertHistory:
@@ -153,7 +154,7 @@ class AlertHistory:
         self.size_bytes = 0
         self.source = None
 
-    def append(self, jpeg, timestamp, source, *, has_person=True, person_centroids=None):
+    def append(self, jpeg, timestamp, source, *, has_person=True, person_centroids=None, track_ids=None):
         if source != self.source:
             self.frames.clear()
             self.size_bytes = 0
@@ -161,16 +162,19 @@ class AlertHistory:
         if not jpeg:
             return
         # Empty observations still age out old detections within the rolling window.
-        frame = HistoryFrame(bytes(jpeg) if has_person else b'', timestamp, person_centroids=person_centroids)
+        frame = HistoryFrame(bytes(jpeg) if has_person else b'', timestamp, person_centroids=person_centroids,
+                             track_ids=None if track_ids is None else frozenset(track_ids))
         self.frames.append(frame)
         self.size_bytes += len(frame.jpeg)
         while self.frames and (len(self.frames) > self.config.history_frames or
                                self.size_bytes > self.config.history_max_mb*1024*1024):
             self.size_bytes -= len(self.frames.popleft().jpeg)
 
-    def snapshot(self, focus_box=None):
+    def snapshot(self, focus_box=None, track_ids=None):
+        selected = None if track_ids is None else frozenset(track_ids)
         return tuple(replace(frame, focus_box=focus_box) if focus_box is not None else frame
                      for frame in self.frames if frame.jpeg and
+                     (selected is None or bool(selected.intersection(frame.track_ids or ()))) and
                      (focus_box is None or frame.person_centroids is None or
                       any(focus_box[0] <= x < focus_box[2] and focus_box[1] <= y < focus_box[3]
                           for x, y in frame.person_centroids)))
