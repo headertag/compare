@@ -69,7 +69,14 @@ def main():
             text = ('Camera monitor: health notifications are now enabled. This is an installation test.'
                     if args.test else notification_plan(issues, previous.get(key, {}), now,
                                                         settings.get('repeat_seconds', 3600)))
-            if not text: continue
+            if not text:
+                # Silent media transitions/recovery still update incident state so
+                # a later independent failure can issue its initial warning.
+                if key in previous and previous[key].get('issues') != issues:
+                    previous[key]['issues'] = issues
+                    temp = path.with_suffix('.tmp')
+                    temp.write_text(json.dumps(previous)); os.chmod(temp, 0o600); os.replace(temp, path)
+                continue
             try:
                 send_message(cfg['telegram']['token'], chat, text)
             except Exception as exc:

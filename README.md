@@ -484,8 +484,11 @@ Configure thresholds under `health` in the example YAML. `ignored_panes` uses
 1-based row-major numbering; exclude intentionally unused channels. Quiet scenes
 can also look unchanged, so pane and inactivity warnings are advisories, not proof
 of camera failure. Snapshot comparison tolerates small capture/compression noise.
-Warnings are sent on state changes and repeated hourly by default; resolved checks
-produce a recovery notification. Each recipient retries independently on failure.
+Media upload incidents issue one initial warning, without hourly repeats or
+media recovery messages. Stalled-to-failed transitions remain the same incident.
+Other warnings repeat hourly by default and report recovery. Each recipient
+retries failed health-notification delivery independently. Successful text delivery
+does not clear a media error.
 
 The checker runs on the Jetson: power loss or a complete network/Telegram outage
 cannot be reported through that same machine/connection until connectivity returns.

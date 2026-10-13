@@ -139,14 +139,22 @@ def health_issues(state, settings, now=None):
 def notification_plan(issues, previous, now, repeat_seconds):
     """Return changed/repeat failures and recoveries; persist only after delivery."""
     old = previous.get('issues', {})
-    changed = set(issues) != set(old)
-    due = bool(issues) and now-previous.get('sent_at', 0) >= repeat_seconds
-    if not changed and not due:
+    media = {'media_error', 'media_stalled'}
+    new_media_incident = bool(media.intersection(issues)) and not media.intersection(old)
+    current_other = set(issues)-media
+    old_other = set(old)-media
+    changed = current_other != old_other
+    due = bool(current_other) and now-previous.get('sent_at', 0) >= repeat_seconds
+    if not changed and not due and not new_media_incident:
         return None
+    warnings = [v for k, v in issues.items() if k not in media]
+    if new_media_incident:
+        warnings.append('Having trouble uploading alert media to Telegram. '
+                        'This incident will not generate repeat reminders.')
     parts = []
-    if issues:
-        parts.append('Camera monitor health warning:\n'+'\n'.join('- '+v for v in issues.values()))
-    resolved = set(old)-set(issues)
+    if warnings:
+        parts.append('Camera monitor health warning:\n'+'\n'.join('- '+v for v in warnings))
+    resolved = old_other-current_other
     if resolved:
         parts.append('Recovered checks: '+', '.join(sorted(resolved)))
     return '\n\n'.join(parts) or None

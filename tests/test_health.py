@@ -121,3 +121,42 @@ def test_checker_retries_only_recipient_whose_delivery_failed(tmp_path, monkeypa
     module.main()
     assert second.call_count == 1 and second.call_args.args[1] == 2
     assert set(json.loads((runtime/'health-notifications.json').read_text())) == {'1', '2'}
+
+
+def test_media_incident_warns_once_through_stall_failure_and_silent_recovery():
+    stall={'media_stalled':'busy'}
+    error={'media_error':'upload failed'}
+    assert notification_plan(stall,{},1,3600)
+    assert notification_plan(error,{'issues':stall,'sent_at':1},4000,3600) is None
+    assert notification_plan(error,{'issues':error,'sent_at':1},8000,3600) is None
+    assert notification_plan({}, {'issues':error,'sent_at':1},9000,3600) is None
+    assert notification_plan(error,{'issues':{},'sent_at':1},10000,3600)
+
+
+def test_unrelated_warning_does_not_repeat_media_failure():
+    old={'media_error':'upload failed'}
+    text=notification_plan({**old,'frames':'stale frames'},{'issues':old,'sent_at':1},4000,3600)
+    assert 'stale frames' in text and 'upload failed' not in text
+
+
+def test_checker_persists_silent_media_recovery_and_rearms(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    import time
+    from pathlib import Path
+    import yaml
+    script=Path(__file__).resolve().parents[1]/'scripts/check_camera_health.py'
+    spec=importlib.util.spec_from_file_location('checker_silent_recovery',script)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path/'config.yaml').write_text(yaml.safe_dump({'health':{'enabled':True},'telegram':{'token':'test','chat_ids':[1]}}))
+    runtime=tmp_path/'.runtime';runtime.mkdir()
+    current=state(time.time());current.update(pid=1,media_error='Upload failed')
+    monkeypatch.setattr(sys,'argv',['check_camera_health.py'])
+    monkeypatch.setattr(module.subprocess,'run',lambda *a,**kw:SimpleNamespace(returncode=0,stdout='ActiveState=active\nMainPID=1\nActiveEnterTimestampMonotonic=1\n'))
+    send=MagicMock();monkeypatch.setattr(module,'send_message',send)
+    for error in ('Upload failed',None,'Upload failed'):
+        current['media_error']=error
+        (runtime/'health.json').write_text(json.dumps(current))
+        module.main()
+    assert send.call_count==2  # Initial failure and a new failure, no recovery message.
