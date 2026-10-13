@@ -79,7 +79,7 @@ def test_media_success_clears_previous_health_failure():
     from alert_media import HistoryFrame
     sender = sender_without_thread(MagicMock())
     sender.health = MagicMock()
-    def encode(frames, path, fps): path.write_bytes(b'video')
+    def encode(frames, path, fps, **kwargs): path.write_bytes(b'video')
     with patch('alert_media.encode_alert_video', side_effect=encode):
         sender.send_snapshot((HistoryFrame(jpeg(), 0),))
     status = sender.health.update.call_args.kwargs

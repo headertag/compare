@@ -515,3 +515,22 @@ take time. Clip history remains retrospective, but cannot itself trigger an aler
 
 Offline regression fixtures and reproduction instructions are in
 [the synthetic pane investigation](docs/testing/synthetic-pane-forensics.md).
+
+### Bounded media delivery and retries
+
+`alert_media.delivery_timeout_seconds` defaults to 60 seconds for encoding,
+all recipients, retries and fallback photos combined. Upload attempts are capped
+at `upload_timeout_seconds` (20 seconds), with at most `upload_attempts` (3)
+attempts per upload and exponential backoff from `retry_backoff_seconds` (1 second).
+Transient transport failures, timeouts, Telegram 429 and 5xx responses retry.
+Permanent Telegram errors do not. Server `retry_after` is honored only if it fits
+the remaining deadline. Recipients share the remaining budget fairly; a failed
+recipient never causes a successful recipient to be resent the clip.
+
+Encoding and file uploads run in supervised subprocesses. Deadline expiry kills
+the process group, including the encoder, rather than leaving an upload thread
+running. The worker then becomes available for fresh events; no stale retry queue
+is retained. Error logs include sanitized Telegram status/description, and health
+warnings remain one per incident. A lost response after Telegram accepted a file
+can still make a retry duplicate it; Telegram does not provide an idempotency key
+for these sends. New settings are optional and defaults apply to existing configs.

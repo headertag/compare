@@ -20,16 +20,20 @@ class MediaConfig:
     history_frames: int = 60
     history_max_mb: float = 64.0
     playback_fps: float = 1.0
+    delivery_timeout_seconds: float = 60.0
+    upload_timeout_seconds: float = 20.0
+    upload_attempts: int = 3
+    retry_backoff_seconds: float = 1.0
 
     def __post_init__(self):
         for name in ('debug_mode', 'zoom_enabled', 'video_enabled'):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f'alert_media.{name} must be boolean')
-        for name in ('history_frames', 'max_zoom_per_pane'):
+        for name in ('history_frames', 'max_zoom_per_pane', 'upload_attempts'):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < (0 if name == 'max_zoom_per_pane' else 1):
                 raise ValueError(f'alert_media.{name} must be a valid integer')
-        for name in ('zoom_factor', 'zoom_max_pane_fraction', 'history_max_mb', 'playback_fps'):
+        for name in ('zoom_factor', 'zoom_max_pane_fraction', 'history_max_mb', 'playback_fps', 'delivery_timeout_seconds', 'upload_timeout_seconds', 'retry_backoff_seconds'):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f'alert_media.{name} must be finite and positive')
@@ -180,8 +184,15 @@ class AlertHistory:
                           for x, y in frame.person_centroids)))
 
 
-def encode_alert_video(frames, path, fps):
+def encode_alert_video(frames, path, fps, *, timeout_seconds=None):
     """Encode chronologically in a worker, with bounded decode memory and CPU use."""
+    if timeout_seconds is not None:
+        import pickle
+        import sys
+        from media_transport import run_bounded
+        run_bounded([sys.executable, str(Path(__file__).with_name('media_transport.py')), 'encode'],
+                    pickle.dumps((frames, str(path), fps)), timeout_seconds)
+        return
     import imageio_ffmpeg
     if not frames:
         raise ValueError('No alert frames available')

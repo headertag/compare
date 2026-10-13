@@ -1,10 +1,15 @@
 import time
-import telepot
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS, debug_print
+
+def safe_media_error(exc):
+    from media_transport import MediaDeliveryError
+    return str(exc) if isinstance(exc, MediaDeliveryError) else type(exc).__name__
+
 
 def initialize_bot():
     """Initializes and returns the Telegram bot object."""
-    return telepot.Bot(TELEGRAM_TOKEN)
+    from media_transport import BoundedTelegramBot
+    return BoundedTelegramBot(TELEGRAM_TOKEN)
 
 def send_alert(bot, image_path='ALERT.jpg'):
     """Sends an image alert to the configured Telegram chats."""
@@ -52,7 +57,7 @@ class AlertMediaSender:
                 self.send_snapshot(frames)
             except Exception as exc:
                 self._health(media_error='Worker failed: '+type(exc).__name__)
-                print(f'Alert media failed: {type(exc).__name__}', flush=True)
+                print(f'Alert media failed: {safe_media_error(exc)}', flush=True)
             finally:
                 self._health(media_busy_since=None)
                 self.slot.release()
@@ -62,11 +67,33 @@ class AlertMediaSender:
         if getattr(self, "health", None) is not None:
             self.health.update(**values)
 
+    def _retry_upload(self, action, deadline):
+        import subprocess
+        from media_transport import MediaDeliveryError
+        for attempt in range(self.config.upload_attempts):
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Media delivery deadline reached')
+            try:
+                return action(min(self.config.upload_timeout_seconds, remaining))
+            except Exception as exc:
+                retryable = isinstance(exc, (TimeoutError, subprocess.TimeoutExpired, OSError)) or (
+                    isinstance(exc, MediaDeliveryError) and exc.retryable)
+                if not retryable or attempt+1 >= self.config.upload_attempts:
+                    raise
+                delay = max(self.config.retry_backoff_seconds * 2**attempt,
+                            getattr(exc, 'retry_after', 0))
+                if delay >= deadline-time.monotonic():
+                    raise TimeoutError('Media delivery deadline reached') from exc
+                print(f'[MEDIA] retry attempt={attempt+2} delay_seconds={delay:g} reason={safe_media_error(exc)}', flush=True)
+                time.sleep(delay)
+
     def send_snapshot(self, frames):
         import io
         import tempfile
         from pathlib import Path
         from alert_media import encode_alert_video
+        deadline = time.monotonic()+self.config.delivery_timeout_seconds
         # Unique files and immutable JPEG bytes avoid concurrent ALERT.jpg races.
         with tempfile.TemporaryDirectory(prefix='compare-alert-') as directory:
             video = Path(directory) / 'trajectory.mp4'
@@ -76,31 +103,39 @@ class AlertMediaSender:
             if self.config.video_enabled and frames:
                 try:
                     debug_print(f"[MEDIA] encoding frames={len(frames)} fps={self.config.playback_fps}")
-                    encode_alert_video(frames, video, self.config.playback_fps)
+                    encode_alert_video(frames, video, self.config.playback_fps,
+                                       timeout_seconds=max(0, deadline-time.monotonic()))
                     have_video = True
                 except Exception as exc:
                     failures.append('Video encoding failed: '+type(exc).__name__)
-                    print(f'Video encoding failed; using magnified snapshot: {type(exc).__name__}', flush=True)
-            for chat_id in self.chat_ids:
+                    print(f'Video encoding failed; using magnified snapshot: {safe_media_error(exc)}', flush=True)
+            for index, chat_id in enumerate(self.chat_ids):
+                # Reserve a fair share of the remaining total budget for each recipient.
+                now = time.monotonic()
+                recipient_deadline = now+max(0, deadline-now)/(len(self.chat_ids)-index)
                 try:
                     if have_video:
                         try:
-                            with video.open('rb') as clip:
-                                self.bot.sendVideo(chat_id, clip, supports_streaming=True)
+                            def upload_video(timeout):
+                                with video.open('rb') as clip:
+                                    self.bot.sendVideo(chat_id, clip, supports_streaming=True, timeout_seconds=timeout)
+                            self._retry_upload(upload_video, recipient_deadline)
                             delivered += 1
                             print(f'Telegram video delivered: {len(frames)} frames, {video.stat().st_size} bytes.', flush=True)
                             continue
                         except Exception as exc:
-                            failures.append('Video upload failed: '+type(exc).__name__)
-                            print(f'Video upload failed; using snapshot: {type(exc).__name__}', flush=True)
-                    image = io.BytesIO(frames[-1].jpeg)
-                    image.name = 'person-alert.jpg'
-                    self.bot.sendPhoto(chat_id, image)
+                            failures.append('Video upload failed: '+safe_media_error(exc))
+                            print(f'Video upload failed; using snapshot: {safe_media_error(exc)}', flush=True)
+                    def upload_photo(timeout):
+                        image = io.BytesIO(frames[-1].jpeg)
+                        image.name = 'person-alert.jpg'
+                        self.bot.sendPhoto(chat_id, image, timeout_seconds=timeout)
+                    self._retry_upload(upload_photo, recipient_deadline)
                     delivered += 1
                     print('[MEDIA] photo delivered', flush=True)
                 except Exception as exc:
-                    failures.append('Alert delivery failed: '+type(exc).__name__)
-                    print(f'Alert delivery failed: {type(exc).__name__}', flush=True)
+                    failures.append('Alert delivery failed: '+safe_media_error(exc))
+                    print(f'Alert delivery failed: {safe_media_error(exc)}', flush=True)
 
             status = {'media_error': '; '.join(sorted(set(failures))) or None,
                       'last_delivery_recipients': delivered, 'last_clip_frames': len(frames)}

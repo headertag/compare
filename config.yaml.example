@@ -126,6 +126,10 @@ alert_media:
   history_frames: 60 # Processed-frame window for observations of triggering tracks
   history_max_mb: 64 # Compressed JPEG buffer; oldest frames are evicted if needed
   playback_fps: 1 # One second per retained person frame; empty frames omitted
+  delivery_timeout_seconds: 60 # Total encoding/upload/backoff budget across all recipients
+  upload_timeout_seconds: 20 # Maximum duration of each upload attempt
+  upload_attempts: 3 # Total attempts for transient errors, within the total budget
+  retry_backoff_seconds: 1 # Exponential delay: 1s, 2s; honor Telegram retry_after
 
 
 # Independent Telegram health notifications (install camera-health.timer).

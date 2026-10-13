@@ -108,7 +108,7 @@ def test_video_encoding_failure_falls_back_to_independent_photo_streams():
 def test_video_upload_failure_falls_back_only_for_failed_recipient(tmp_path):
     bot = MagicMock()
     sender = sender_without_thread(bot)
-    def encode(frames, path, fps):
+    def encode(frames, path, fps, **kwargs):
         path.write_bytes(b'video')
     videos = []
     photos = []
